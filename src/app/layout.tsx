@@ -24,6 +24,18 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ar" dir="rtl" suppressHydrationWarning>
+      <head>
+        {/*
+          Belt-and-braces: scrub any leftover wizard state from older builds so the
+          field always opens blank, even if the user has the page cached.
+          Runs BEFORE React hydrates, so the wizard's first render is fresh.
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k&&(k.indexOf('vcpb')===0||k.indexOf('vibe-coder')===0))localStorage.removeItem(k);}catch(e){}`,
+          }}
+        />
+      </head>
       <body className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
         {children}
       </body>
