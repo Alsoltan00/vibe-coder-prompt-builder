@@ -9,7 +9,8 @@ import type {
 } from '@/types';
 import { autoFix } from '@/lib/compatibility';
 
-const STORAGE_KEY = 'vcpb:v3';
+// Persistence removed: every reload starts with a clean, empty wizard.
+// (User requested: no saved state, no buttons, field starts blank.)
 
 const STEP_IDS: WizardStepId[] = [
   'welcome', 'project-type', 'identity', 'features', 'language',
@@ -108,21 +109,11 @@ function useWizardProviderInner() {
     const saved = localStorage.getItem('vcpb:locale');
     return saved === 'en' || saved === 'ar' ? saved : 'ar';
   });
-  const [data, setData] = useState<ProjectData>(() => {
-    if (typeof window === 'undefined') return defaultData();
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) return { ...defaultData(), ...JSON.parse(saved) } as ProjectData;
-    } catch { /* ignore corrupted storage */ }
-    return defaultData();
-  });
+  // Wizard state is NOT persisted. Every page load starts fresh, so any
+  // "my-project" leftover from a previous session is gone immediately.
+  const [data, setData] = useState<ProjectData>(defaultData);
 
-  // Persist
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch { /* quota */ }
-  }, [data]);
-  useEffect(() => {
-    try { localStorage.setItem('vcpb:locale', locale); } catch { /* noop */ }
     if (typeof document !== 'undefined') {
       document.documentElement.lang = locale;
       document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr';
