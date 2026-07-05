@@ -526,18 +526,14 @@ const RULES: Rule[] = [
     message: () => 'Payments require E2E testing.',
   },
 
+  // NOTE: project-name-required was removed — it blocked the Next button
+// even on early steps (e.g. Project Type) where the user hasn't reached
+// Identity yet. The Identity step already has a required marker (*) on
+// the field and the Generate step will surface an error if it's missing.
+
+// ===================================================================
+  // 16. (reserved)
   // ===================================================================
-  // 16. IDENTITY — name required
-  // ===================================================================
-  {
-    id: 'project-name-required',
-    appliesTo: (d) => true,
-    check: (d) =>
-      d.identity.name.trim() !== ''
-        ? null
-        : { field: 'identity.name', fix: '' },
-    message: () => 'Project name is required.',
-  },
 ];
 
 // =====================================================================
