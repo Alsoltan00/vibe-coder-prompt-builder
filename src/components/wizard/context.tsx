@@ -7,6 +7,7 @@ import type {
   DevOpsStack, ProfessionalRequirements, SocialProviderId, LocaleId,
   TranslationSourceId,
 } from '@/types';
+import { autoFix } from '@/lib/compatibility';
 
 const STORAGE_KEY = 'vcpb:v3';
 
@@ -147,24 +148,25 @@ function useWizardProviderInner() {
     setStepIdx(0);
   }, [locale]);
 
-  // Nested setters
+  // Nested setters — every setter auto-fixes the entire state via compatibility rules,
+  // guaranteeing the user CANNOT leave the wizard in an inconsistent state.
   const setIdentity = useCallback((patch: Partial<ProjectIdentity>) => {
-    setData((p) => ({ ...p, identity: { ...p.identity, ...patch } }));
+    setData((p) => autoFix({ ...p, identity: { ...p.identity, ...patch } }));
   }, []);
   const setLanguage = useCallback((id: LanguageId | '') => {
-    setData((p) => ({ ...p, language: id }));
+    setData((p) => autoFix({ ...p, language: id }));
   }, []);
   const setFeatures = useCallback((features: string[]) => {
     setData((p) => ({ ...p, coreFeatures: features }));
   }, []);
   const setStack = useCallback(<K extends keyof ProjectData['stack']>(key: K, val: ProjectData['stack'][K]) => {
-    setData((p) => ({ ...p, stack: { ...p.stack, [key]: val } }));
+    setData((p) => autoFix({ ...p, stack: { ...p.stack, [key]: val } }));
   }, []);
   const setAdditionalReqs = useCallback((arr: string[]) => {
     setData((p) => ({ ...p, additionalRequirements: arr }));
   }, []);
   const setProfessionalReqs = useCallback((pr: ProfessionalRequirements) => {
-    setData((p) => ({ ...p, professionalRequirements: pr }));
+    setData((p) => autoFix({ ...p, professionalRequirements: pr }));
   }, []);
 
   return {

@@ -7,11 +7,23 @@ import {
 import { useWizard } from '@/components/wizard/context';
 import { StepHeader } from './ProjectTypeStep';
 import { t as tr } from '@/lib/i18n';
+import {
+  filterPaymentProviders,
+  filterAnalyticsProviders,
+  filterStorageProviders,
+  filterManagedSearch,
+} from '@/lib/filter';
 
 export function ThirdPartyStep() {
   const wizard = useWizard();
   const tp = wizard.data.stack.thirdParty;
-  const t = tr(wizard.locale);
+  const prof = wizard.data.professionalRequirements;
+  const db = wizard.data.stack.database;
+
+  const paymentsFilter = filterPaymentProviders(paymentProviders as any, prof.payments);
+  const analyticsFilter = filterAnalyticsProviders(analyticsProviders as any, prof.analytics);
+  const storageFilter = filterStorageProviders(storageProviders as any, prof.fileUploads, db.primary as any);
+  const managedSearchFilter = filterManagedSearch(managedSearchProviders as any, db.search);
 
   return (
     <div className="space-y-6">
@@ -21,9 +33,10 @@ export function ThirdPartyStep() {
       />
       <Sub
         title={wizard.locale === 'ar' ? 'المدفوعات' : 'Payments'}
-        catalog={paymentProviders}
+        catalog={paymentsFilter.catalog}
         value={tp.payments}
         onChange={(v) => wizard.setStack('thirdParty', { ...tp, payments: v as any })}
+        excluded={paymentsFilter.excluded}
       />
       <Sub
         title={wizard.locale === 'ar' ? 'البريد الإلكتروني' : 'Email'}
@@ -39,9 +52,10 @@ export function ThirdPartyStep() {
       />
       <Sub
         title={wizard.locale === 'ar' ? 'تحليلات الاستخدام' : 'Analytics'}
-        catalog={analyticsProviders}
+        catalog={analyticsFilter.catalog}
         value={tp.analytics}
         onChange={(v) => wizard.setStack('thirdParty', { ...tp, analytics: v as any })}
+        excluded={analyticsFilter.excluded}
       />
       <Sub
         title={wizard.locale === 'ar' ? 'المراقبة' : 'Monitoring'}
@@ -51,15 +65,17 @@ export function ThirdPartyStep() {
       />
       <Sub
         title={wizard.locale === 'ar' ? 'تخزين الملفات' : 'File storage'}
-        catalog={storageProviders}
+        catalog={storageFilter.catalog}
         value={tp.storage}
         onChange={(v) => wizard.setStack('thirdParty', { ...tp, storage: v as any })}
+        excluded={storageFilter.excluded}
       />
       <Sub
         title={wizard.locale === 'ar' ? 'بحث مدار' : 'Managed search'}
-        catalog={managedSearchProviders}
+        catalog={managedSearchFilter.catalog}
         value={tp.search}
         onChange={(v) => wizard.setStack('thirdParty', { ...tp, search: v as any })}
+        excluded={managedSearchFilter.excluded}
       />
       <Sub
         title={wizard.locale === 'ar' ? 'أعلام الميزات' : 'Feature flags'}
@@ -76,6 +92,7 @@ function Sub<TId extends string>(props: {
   catalog: any[];
   value: TId | '' | TId[];
   onChange: (v: TId | '' | TId[]) => void;
+  excluded?: Record<string, string>;
 }) {
   const wizard = useWizard();
   return (
@@ -86,6 +103,7 @@ function Sub<TId extends string>(props: {
         value={props.value}
         onChange={props.onChange}
         locale={wizard.locale}
+        excluded={props.excluded}
       />
     </div>
   );

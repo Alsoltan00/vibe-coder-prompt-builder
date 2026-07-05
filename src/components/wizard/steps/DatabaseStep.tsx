@@ -10,7 +10,12 @@ import {
   analyticsDatabases, graphDatabases, timeSeriesDatabases,
 } from '@/lib/catalog/infrastructure';
 import { t as tr } from '@/lib/i18n';
-import { filterVectorDatabases, filterTimeSeriesDatabases } from '@/lib/filter';
+import {
+  filterVectorDatabases,
+  filterTimeSeriesDatabases,
+  filterSearchDatabases,
+  filterPrimaryDatabases,
+} from '@/lib/filter';
 
 type Tab = 'primary' | 'cache' | 'vector' | 'search' | 'analytics' | 'graph' | 'timeseries';
 
@@ -53,6 +58,13 @@ export function DatabaseStep() {
     Object.assign(excluded, f.excluded);
   } else if (tab === 'timeseries') {
     const f = filterTimeSeriesDatabases(timeSeriesDatabases as any, db.primary);
+    Object.assign(excluded, f.excluded);
+  } else if (tab === 'search') {
+    const f = filterSearchDatabases(searchDatabases as any, wizard.data.stack.thirdParty.search);
+    Object.assign(excluded, f.excluded);
+  } else if (tab === 'primary') {
+    // primary depends on auth
+    const f = filterPrimaryDatabases(primaryDatabases as any, wizard.data.stack.auth.primary);
     Object.assign(excluded, f.excluded);
   }
 

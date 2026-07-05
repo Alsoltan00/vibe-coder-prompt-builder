@@ -9,7 +9,11 @@ import {
   frontendHostingCatalog, backendHostingCatalog, databaseHostingCatalog,
   cdnsCatalog, orchestrationCatalog,
 } from '@/lib/catalog/infrastructure';
-import { filterFrontendHostings, filterBackendHostings } from '@/lib/filter';
+import {
+  filterFrontendHostings,
+  filterBackendHostings,
+  filterDatabaseHostings,
+} from '@/lib/filter';
 
 type Tab = 'frontend' | 'backend' | 'database' | 'cdn' | 'orchestration';
 
@@ -36,6 +40,9 @@ export function HostingStep() {
     excluded = f.excluded;
   } else if (tab === 'backend') {
     const f = filterBackendHostings(backendHostingCatalog as any, wizard.data.stack.backend, wizard.data.language);
+    excluded = f.excluded;
+  } else if (tab === 'database') {
+    const f = filterDatabaseHostings(databaseHostingCatalog as any, wizard.data.stack.database.primary);
     excluded = f.excluded;
   }
 

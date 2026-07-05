@@ -46,6 +46,9 @@ export type BackendId =
   | 'laravel' | 'symfony' | 'gin' | 'echo' | 'fiber'
   | 'actix' | 'axum' | 'aspnet' | 'phoenix' | 'none';
 
+/** Wizard may have an unset state (empty string) before user picks. */
+export type BackendIdOrEmpty = BackendId | '';
+
 // ---- 6. Database stack (each layer is independent) ----
 export type DatabasePrimaryId =
   | 'postgresql' | 'mysql' | 'mariadb' | 'sqlite'
@@ -298,8 +301,8 @@ export interface ProjectData {
   language: LanguageId | '';
   coreFeatures: string[];
   stack: {
-    frontend: FrontendId;
-    backend: BackendId;
+    frontend: FrontendId | '';
+    backend: BackendId | '';
     database: DatabaseStack;
     hosting: HostingStack;
     auth: AuthStack;

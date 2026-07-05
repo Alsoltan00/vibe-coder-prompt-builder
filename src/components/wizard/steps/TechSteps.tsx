@@ -26,7 +26,11 @@ export function LanguageStep() {
 
 export function FrontendStep() {
   const wizard = useWizard();
-  const filter = filterFrontends(frontends as any, wizard.data.identity.projectType);
+  const filter = filterFrontends(
+    frontends as any,
+    wizard.data.identity.projectType,
+    wizard.data.language,
+  );
   return (
     <Step
       catalog={filter.catalog}
@@ -44,6 +48,7 @@ export function BackendStep() {
     backends as any,
     wizard.data.stack.frontend,
     wizard.data.identity.projectType,
+    wizard.data.language,
   );
   return (
     <Step

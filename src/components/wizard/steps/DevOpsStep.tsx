@@ -3,10 +3,19 @@ import { CatalogPicker } from '@/components/CatalogPicker';
 import { ciProviders, cdStrategies, iacTools, packageManagers, monorepoTools } from '@/lib/catalog/services';
 import { useWizard } from '@/components/wizard/context';
 import { StepHeader } from './ProjectTypeStep';
+import { filterPackageManagers } from '@/lib/filter';
 
 export function DevOpsStep() {
   const wizard = useWizard();
   const d = wizard.data.stack.devops;
+  const s = wizard.data.stack;
+
+  const pmFilter = filterPackageManagers(
+    packageManagers as any,
+    wizard.data.language as any,
+    s.frontend as any,
+    s.backend as any,
+  );
 
   return (
     <div className="space-y-6">
@@ -34,9 +43,10 @@ export function DevOpsStep() {
       />
       <Sub
         title={wizard.locale === 'ar' ? 'مدير الحزم' : 'Package Manager'}
-        catalog={packageManagers}
+        catalog={pmFilter.catalog}
         value={d.packageManager}
         onChange={(v) => wizard.setStack('devops', { ...d, packageManager: v as any })}
+        excluded={pmFilter.excluded}
       />
       <Sub
         title={wizard.locale === 'ar' ? 'أداة المونوريبو' : 'Monorepo Tool'}
@@ -53,6 +63,7 @@ function Sub<TId extends string>(props: {
   catalog: any[];
   value: TId | '' | TId[];
   onChange: (v: TId | '' | TId[]) => void;
+  excluded?: Record<string, string>;
 }) {
   const wizard = useWizard();
   return (
@@ -63,6 +74,7 @@ function Sub<TId extends string>(props: {
         value={props.value}
         onChange={props.onChange}
         locale={wizard.locale}
+        excluded={props.excluded}
       />
     </div>
   );

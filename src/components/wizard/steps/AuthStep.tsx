@@ -16,7 +16,7 @@ export function AuthStep() {
   const authFilter = filterAuthProviders(
     authProviders as any,
     wizard.data.stack.frontend,
-    wizard.data.stack.database.primary,
+    wizard.data.stack.database.primary as any,
   );
 
   return (

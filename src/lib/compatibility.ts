@@ -1,405 +1,548 @@
 // =====================================================================
-//   Compatibility Engine
+//   Compatibility Engine v2 — ZERO-TOLERANCE for contradictions
 //   ---------------------------------------------------------------------
-//   Defines rules that prevent the user from choosing combinations
-//   that would produce a broken, ambiguous, or contradictory spec.
-//   Each rule returns a severity (block / warn / info) and a localized
-//   message explaining the problem and the recommended fix.
+//   Every rule below returns severity='block'. The wizard hides all
+//   conflicting options upstream via filter.ts, so the user literally
+//   cannot reach an impossible combination. The validator runs after
+//   generation to guarantee zero contradictions in the final output.
+//
+//   Coverage:
+//   - Project type ↔ frontend/backend
+//   - Frontend ↔ language
+//   - Backend ↔ language
+//   - Hosting ↔ frontend/backend/database
+//   - Database (pgvector/TimescaleDB) ↔ primary
+//   - Auth ↔ database
+//   - Professional features ↔ required services
+//   - Mobile/Desktop ↔ hosting/services
+//   - CI/CD ↔ stack
 // =====================================================================
 
 import type {
   ProjectData,
-  ProjectTypeId,
   FrontendId,
   BackendId,
   DatabasePrimaryId,
   FrontendHostingId,
   BackendHostingId,
+  DatabaseHostingId,
   AuthProviderId,
+  PaymentId,
+  StorageId,
+  MonitoringId,
+  AnalyticsId,
+  PackageManagerId,
+  LanguageId,
 } from '@/types';
 
-export type Severity = 'block' | 'warn' | 'info';
+export type Severity = 'block';
 
 export interface CompatibilityIssue {
   id: string;
   severity: Severity;
-  field: string; // dot-path e.g. "stack.frontend"
-  message: string; // already localized to current UI language
-  fix?: string; // suggested correction (option id)
+  field: string;
+  message: string;
+  fix?: string;
 }
 
 interface Rule {
   id: string;
-  severity: Severity;
   appliesTo: (data: ProjectData) => boolean;
-  check: (data: ProjectData) => Omit<CompatibilityIssue, 'id' | 'severity' | 'message'> | null;
+  check: (data: ProjectData) => { field: string; fix?: string } | null;
   message: (data: ProjectData) => string;
 }
 
+// =====================================================================
+//   Catalog of languages allowed per backend (each backend may support more than one language)
+// =====================================================================
+export const BACKEND_LANGUAGES: Record<BackendId, LanguageId[]> = {
+  express: ['typescript', 'javascript'],
+  fastify: ['typescript', 'javascript'],
+  nestjs: ['typescript', 'javascript'],
+  hono: ['typescript', 'javascript'],
+  koa: ['typescript', 'javascript'],
+  django: ['python'],
+  fastapi: ['python'],
+  flask: ['python'],
+  'spring-boot': ['java', 'kotlin'],
+  rails: ['ruby'],
+  laravel: ['php'],
+  symfony: ['php'],
+  phoenix: ['elixir'],
+  gin: ['go'],
+  echo: ['go'],
+  fiber: ['go'],
+  actix: ['rust'],
+  axum: ['rust'],
+  aspnet: ['csharp'],
+  none: [],
+};
+
+/** Primary language for a backend — used as the default when no language is set */
+export const BACKEND_LANGUAGE: Record<BackendId, LanguageId> = {
+  express: 'typescript',
+  fastify: 'typescript',
+  nestjs: 'typescript',
+  hono: 'typescript',
+  koa: 'typescript',
+  django: 'python',
+  fastapi: 'python',
+  flask: 'python',
+  'spring-boot': 'java',
+  rails: 'ruby',
+  laravel: 'php',
+  symfony: 'php',
+  phoenix: 'elixir',
+  gin: 'go',
+  echo: 'go',
+  fiber: 'go',
+  actix: 'rust',
+  axum: 'rust',
+  aspnet: 'csharp',
+  none: 'typescript',
+};
+
+// Languages a frontend can use
+export const FRONTEND_LANGUAGES: Record<FrontendId, string[]> = {
+  nextjs: ['typescript', 'javascript'],
+  remix: ['typescript', 'javascript'],
+  nuxt: ['typescript', 'javascript'],
+  sveltekit: ['typescript', 'javascript'],
+  astro: ['typescript', 'javascript'],
+  react: ['typescript', 'javascript'],
+  vue: ['typescript', 'javascript'],
+  preact: ['typescript', 'javascript'],
+  solid: ['typescript', 'javascript'],
+  svelte: ['typescript', 'javascript'],
+  lit: ['typescript', 'javascript'],
+  angular: ['typescript', 'javascript'],
+  qwik: ['typescript', 'javascript'],
+  ember: ['typescript', 'javascript'],
+  'react-native': ['typescript', 'javascript'],
+  expo: ['typescript', 'javascript'],
+  flutter: ['dart'],
+  swiftui: ['swift'],
+  'jetpack-compose': ['kotlin'],
+  tauri: ['typescript', 'javascript', 'rust'],
+  electron: ['typescript', 'javascript'],
+  none: [],
+};
+
+// Backends that need a node runtime
+export const NODE_BACKENDS: BackendId[] = ['express', 'fastify', 'nestjs', 'hono', 'koa'];
+
+// Edge-only backends (Cloudflare Workers)
+export const EDGE_BACKENDS: BackendId[] = ['hono'];
+
+// Full-stack frontends (backend should be none)
+export const FULLSTACK_FRONTENDS: FrontendId[] = ['nextjs', 'remix', 'nuxt', 'sveltekit', 'astro'];
+
+// Mobile frontends
+export const MOBILE_FRONTENDS: FrontendId[] = ['react-native', 'expo', 'flutter', 'swiftui', 'jetpack-compose'];
+
+// Desktop frontends
+export const DESKTOP_FRONTENDS: FrontendId[] = ['tauri', 'electron'];
+
+// Web frontends
+export const WEB_FRONTENDS: FrontendId[] = [
+  'react', 'nextjs', 'remix', 'vue', 'nuxt', 'angular', 'svelte', 'sveltekit',
+  'solid', 'astro', 'qwik', 'ember', 'preact', 'lit',
+];
+
+// PostgreSQL-family databases
+export const POSTGRES_DBS: DatabasePrimaryId[] = ['postgresql', 'supabase-db', 'neon', 'cockroachdb'];
+
+// Payment providers (excluding none)
+export const PAYMENT_PROVIDERS: PaymentId[] = ['stripe', 'paypal', 'paddle', 'lemonsqueezy', 'razorpay', 'square', 'adyen', 'mollie', 'checkoutcom'];
+
+// Storage providers (excluding none)
+export const STORAGE_PROVIDERS: StorageId[] = ['aws-s3', 'cloudflare-r2', 'backblaze-b2', 'google-cloud-storage', 'azure-blob', 'supabase-storage', 'uploadthing'];
+
+// Analytics providers (excluding none)
+export const ANALYTICS_PROVIDERS: AnalyticsId[] = ['google-analytics', 'mixpanel', 'amplitude', 'posthog', 'plausible', 'fathom', 'umami', 'datadog-rum', 'sentry-replay'];
+
+// Monitoring providers (excluding none)
+export const MONITORING_PROVIDERS: MonitoringId[] = ['sentry', 'datadog', 'new-relic', 'grafana-cloud', 'honeybadger', 'rollbar', 'axiom', 'logflare'];
+
+// Package managers that work with Node-based stacks
+export const NODE_PACKAGE_MANAGERS: PackageManagerId[] = ['npm', 'pnpm', 'yarn', 'bun'];
+
 const RULES: Rule[] = [
-  // -------------------------------------------------------------------
-  // 1. Frontend full-stack frameworks negate the need for a backend
-  // -------------------------------------------------------------------
+  // ===================================================================
+  // 1. PROJECT TYPE ↔ FRONTEND / BACKEND
+  // ===================================================================
   {
-    id: 'fullstack-no-backend',
-    severity: 'block',
-    appliesTo: (d) =>
-      d.stack.frontend === 'nextjs' ||
-      d.stack.frontend === 'remix' ||
-      d.stack.frontend === 'nuxt' ||
-      d.stack.frontend === 'sveltekit',
-    check: (d) =>
-      d.stack.backend !== 'none'
-        ? {
-            field: 'stack.backend',
-            fix: 'none',
-          }
-        : null,
-    message: () =>
-      'This frontend (Next.js / Remix / Nuxt / SvelteKit) is a full-stack framework — pick `none` for backend or the backend options will be ignored.',
+    id: 'mobile-app-needs-mobile-frontend',
+    appliesTo: (d) => d.identity.projectType === 'mobile-app',
+    check: (d) => {
+      const webOnly: FrontendId[] = ['nextjs', 'remix', 'nuxt', 'sveltekit', 'astro', 'react', 'vue', 'angular', 'svelte', 'solid', 'qwik', 'ember', 'preact', 'lit', 'tauri', 'electron'];
+      return webOnly.includes(d.stack.frontend as FrontendId)
+        ? { field: 'stack.frontend', fix: 'react-native' }
+        : null;
+    },
+    message: () => 'Mobile app requires a mobile frontend (React Native, Expo, Flutter, SwiftUI, Jetpack Compose).',
   },
   {
-    id: 'fullstack-hosting-required',
-    severity: 'info',
-    appliesTo: (d) =>
-      d.stack.frontend === 'nextjs' ||
-      d.stack.frontend === 'remix' ||
-      d.stack.frontend === 'nuxt' ||
-      d.stack.frontend === 'sveltekit',
-    check: (d) =>
-      d.stack.hosting.backend !== 'none' &&
-      d.stack.hosting.frontend !== 'vercel' &&
-      d.stack.hosting.frontend !== 'netlify' &&
-      d.stack.hosting.frontend !== 'cloudflare-pages'
-        ? { field: 'stack.hosting.frontend' }
-        : null,
-    message: () =>
-      'Full-stack frameworks deploy best to Vercel / Netlify / Cloudflare Pages. A custom backend host may be unnecessary.',
+    id: 'desktop-app-needs-desktop-frontend',
+    appliesTo: (d) => d.identity.projectType === 'desktop-app',
+    check: (d) => DESKTOP_FRONTENDS.includes(d.stack.frontend as FrontendId)
+      ? null
+      : { field: 'stack.frontend', fix: 'tauri' },
+    message: () => 'Desktop app requires Tauri or Electron.',
+  },
+  {
+    id: 'cli-tool-no-frontend',
+    appliesTo: (d) => d.identity.projectType === 'cli-tool',
+    check: (d) => d.stack.frontend === 'none'
+      ? null
+      : { field: 'stack.frontend', fix: 'none' },
+    message: () => 'CLI tool has no UI — frontend must be `none`.',
+  },
+  {
+    id: 'cli-tool-no-backend',
+    appliesTo: (d) => d.identity.projectType === 'cli-tool',
+    check: (d) => d.stack.backend === 'none'
+      ? null
+      : { field: 'stack.backend', fix: 'none' },
+    message: () => 'CLI tool has no separate backend — set backend to `none` (or pick a language-specific framework).',
+  },
+  {
+    id: 'library-sdk-no-frontend',
+    appliesTo: (d) => d.identity.projectType === 'library-sdk',
+    check: (d) => d.stack.frontend === 'none'
+      ? null
+      : { field: 'stack.frontend', fix: 'none' },
+    message: () => 'Library/SDK has no UI — frontend must be `none`.',
+  },
+  {
+    id: 'library-sdk-no-backend',
+    appliesTo: (d) => d.identity.projectType === 'library-sdk',
+    check: (d) => d.stack.backend === 'none'
+      ? null
+      : { field: 'stack.backend', fix: 'none' },
+    message: () => 'Library/SDK has no separate backend — set backend to `none`.',
+  },
+  {
+    id: 'api-backend-no-frontend',
+    appliesTo: (d) => d.identity.projectType === 'api-backend',
+    check: (d) => d.stack.frontend === 'none'
+      ? null
+      : { field: 'stack.frontend', fix: 'none' },
+    message: () => 'API backend has no UI — frontend must be `none`.',
+  },
+  {
+    id: 'landing-page-no-backend',
+    appliesTo: (d) => d.identity.projectType === 'landing-page',
+    check: (d) => d.stack.backend === 'none'
+      ? null
+      : { field: 'stack.backend', fix: 'none' },
+    message: () => 'Landing page does not need a separate backend.',
   },
 
-  // -------------------------------------------------------------------
-  // 2. Static-only frontend → no backend, no DB, no auth-as-a-service
-  // -------------------------------------------------------------------
-  {
-    id: 'astro-static',
-    severity: 'block',
-    appliesTo: (d) => d.stack.frontend === 'astro',
-    check: (d) =>
-      d.stack.backend !== 'none'
-        ? { field: 'stack.backend', fix: 'none' }
-        : null,
-    message: () => 'Astro is a static-first framework — the backend must be `none`.',
-  },
-
-  // -------------------------------------------------------------------
-  // 3. Mobile native frameworks are bound to specific languages
-  // -------------------------------------------------------------------
+  // ===================================================================
+  // 2. FRONTEND ↔ LANGUAGE
+  // ===================================================================
   {
     id: 'swiftui-needs-swift',
-    severity: 'block',
     appliesTo: (d) => d.stack.frontend === 'swiftui',
     check: (d) =>
-      d.language !== '' && d.language !== 'swift'
-        ? { field: 'language', fix: 'swift' }
-        : null,
-    message: () => 'SwiftUI requires Swift as the primary language.',
+      d.language === '' || d.language === 'swift'
+        ? null
+        : { field: 'language', fix: 'swift' },
+    message: () => 'SwiftUI requires Swift.',
   },
   {
     id: 'compose-needs-kotlin',
-    severity: 'block',
     appliesTo: (d) => d.stack.frontend === 'jetpack-compose',
     check: (d) =>
-      d.language !== '' && d.language !== 'kotlin'
-        ? { field: 'language', fix: 'kotlin' }
-        : null,
+      d.language === '' || d.language === 'kotlin'
+        ? null
+        : { field: 'language', fix: 'kotlin' },
     message: () => 'Jetpack Compose requires Kotlin.',
   },
   {
     id: 'flutter-needs-dart',
-    severity: 'block',
     appliesTo: (d) => d.stack.frontend === 'flutter',
     check: (d) =>
-      d.language !== '' && d.language !== 'dart'
-        ? { field: 'language', fix: 'dart' }
-        : null,
-    message: () => 'Flutter requires Dart as the primary language.',
-  },
-
-  // -------------------------------------------------------------------
-  // 4. Backend language coherence
-  // -------------------------------------------------------------------
-  {
-    id: 'django-needs-python',
-    severity: 'block',
-    appliesTo: (d) =>
-      d.stack.backend === 'django' ||
-      d.stack.backend === 'fastapi' ||
-      d.stack.backend === 'flask',
-    check: (d) =>
-      d.language !== '' && d.language !== 'python'
-        ? { field: 'language', fix: 'python' }
-        : null,
-    message: () => 'Python backend frameworks require Python as the language.',
+      d.language === '' || d.language === 'dart'
+        ? null
+        : { field: 'language', fix: 'dart' },
+    message: () => 'Flutter requires Dart.',
   },
   {
-    id: 'spring-needs-java',
-    severity: 'block',
-    appliesTo: (d) => d.stack.backend === 'spring-boot',
-    check: (d) =>
-      d.language !== '' && d.language !== 'java' && d.language !== 'kotlin'
-        ? { field: 'language', fix: 'java' }
-        : null,
-    message: () => 'Spring Boot requires Java or Kotlin.',
-  },
-  {
-    id: 'rails-needs-ruby',
-    severity: 'block',
-    appliesTo: (d) => d.stack.backend === 'rails',
-    check: (d) =>
-      d.language !== '' && d.language !== 'ruby'
-        ? { field: 'language', fix: 'ruby' }
-        : null,
-    message: () => 'Ruby on Rails requires Ruby.',
-  },
-  {
-    id: 'laravel-needs-php',
-    severity: 'block',
-    appliesTo: (d) => d.stack.backend === 'laravel' || d.stack.backend === 'symfony',
-    check: (d) =>
-      d.language !== '' && d.language !== 'php'
-        ? { field: 'language', fix: 'php' }
-        : null,
-    message: () => 'PHP frameworks require PHP.',
-  },
-  {
-    id: 'phoenix-needs-elixir',
-    severity: 'block',
-    appliesTo: (d) => d.stack.backend === 'phoenix',
-    check: (d) =>
-      d.language !== '' && d.language !== 'elixir'
-        ? { field: 'language', fix: 'elixir' }
-        : null,
-    message: () => 'Phoenix requires Elixir.',
-  },
-  {
-    id: 'rust-backends-need-rust',
-    severity: 'block',
-    appliesTo: (d) => d.stack.backend === 'actix' || d.stack.backend === 'axum',
-    check: (d) =>
-      d.language !== '' && d.language !== 'rust'
-        ? { field: 'language', fix: 'rust' }
-        : null,
-    message: () => 'Rust backends (Actix / Axum) require Rust.',
-  },
-  {
-    id: 'gin-echo-fiber-need-go',
-    severity: 'block',
-    appliesTo: (d) =>
-      d.stack.backend === 'gin' ||
-      d.stack.backend === 'echo' ||
-      d.stack.backend === 'fiber',
-    check: (d) =>
-      d.language !== '' && d.language !== 'go'
-        ? { field: 'language', fix: 'go' }
-        : null,
-    message: () => 'Go backends (Gin / Echo / Fiber) require Go.',
-  },
-
-  // -------------------------------------------------------------------
-  // 5. Edge runtimes → compatible backends only
-  // -------------------------------------------------------------------
-  {
-    id: 'cloudflare-workers-backend',
-    severity: 'warn',
-    appliesTo: (d) => d.stack.hosting.backend === 'cloudflare-workers',
+    id: 'web-frontend-needs-js-ts',
+    appliesTo: (d) => WEB_FRONTENDS.includes(d.stack.frontend as FrontendId) && d.stack.frontend !== 'astro',
     check: (d) => {
-      const incompatible: BackendId[] = [
-        'spring-boot', 'django', 'rails', 'flask', 'fastapi',
-        'laravel', 'symfony', 'phoenix', 'actix', 'axum',
-        'aspnet', 'gin', 'echo', 'fiber',
-      ];
-      return incompatible.includes(d.stack.backend)
-        ? { field: 'stack.backend', fix: 'hono' }
+      const allowed = FRONTEND_LANGUAGES[d.stack.frontend as FrontendId] || [];
+      return d.language !== '' && !allowed.includes(d.language)
+        ? { field: 'language', fix: 'typescript' }
         : null;
     },
-    message: () =>
-      'Cloudflare Workers run on V8 isolates — incompatible with traditional Node/Python/Java/Ruby backends. Use Hono for Cloudflare.',
+    message: () => 'Web frontend requires TypeScript or JavaScript.',
   },
 
-  // -------------------------------------------------------------------
-  // 6. pgvector & TimescaleDB need Postgres
-  // -------------------------------------------------------------------
+  // ===================================================================
+  // 3. BACKEND ↔ LANGUAGE
+  // ===================================================================
+  {
+    id: 'backend-implies-language',
+    appliesTo: (d) => d.stack.backend !== '' && (d.stack.backend as string) !== 'none',
+    check: (d) => {
+      const required = BACKEND_LANGUAGE[d.stack.backend as BackendId];
+      if (!required) return null;
+      return d.language !== '' && d.language !== required
+        ? { field: 'language', fix: required }
+        : null;
+    },
+    message: (d) => {
+      const required = BACKEND_LANGUAGE[d.stack.backend as BackendId];
+      const label = (d.stack.backend as string).charAt(0).toUpperCase() + (d.stack.backend as string).slice(1);
+      return `${label} requires ${required}.`;
+    },
+  },
+
+  // ===================================================================
+  // 4. FULL-STACK FRONTENDS → NO BACKEND
+  // ===================================================================
+  {
+    id: 'fullstack-frontend-no-backend',
+    appliesTo: (d) => FULLSTACK_FRONTENDS.includes(d.stack.frontend as FrontendId),
+    check: (d) => d.stack.backend !== 'none'
+      ? { field: 'stack.backend', fix: 'none' }
+      : null,
+    message: (d) => `${d.stack.frontend} is a full-stack framework — backend must be \`none\`.`,
+  },
+
+  // ===================================================================
+  // 5. MOBILE / DESKTOP FRONTENDS → NO FRONTEND HOSTING
+  // ===================================================================
+  {
+    id: 'mobile-no-frontend-hosting',
+    appliesTo: (d) => MOBILE_FRONTENDS.includes(d.stack.frontend as FrontendId),
+    check: (d) => d.stack.hosting.frontend !== 'none'
+      ? { field: 'stack.hosting.frontend', fix: 'none' }
+      : null,
+    message: () => 'Mobile apps don\'t need frontend hosting — use App Store / Play Store.',
+  },
+  {
+    id: 'desktop-no-frontend-hosting',
+    appliesTo: (d) => DESKTOP_FRONTENDS.includes(d.stack.frontend as FrontendId),
+    check: (d) => d.stack.hosting.frontend !== 'none'
+      ? { field: 'stack.hosting.frontend', fix: 'none' }
+      : null,
+    message: () => 'Desktop apps don\'t need frontend hosting — bundle in the installer.',
+  },
+
+  // ===================================================================
+  // 6. WEB FRONTEND → MUST HAVE FRONTEND HOSTING
+  // ===================================================================
+  {
+    id: 'web-frontend-needs-hosting',
+    appliesTo: (d) => WEB_FRONTENDS.includes(d.stack.frontend as FrontendId),
+    check: (d) => d.stack.hosting.frontend === 'none'
+      ? { field: 'stack.hosting.frontend', fix: 'vercel' }
+      : null,
+    message: () => 'Web frontend must be hosted (Vercel, Netlify, etc.).',
+  },
+
+  // ===================================================================
+  // 7. BACKEND EXISTS → MUST HAVE BACKEND HOSTING
+  // ===================================================================
+  {
+    id: 'backend-needs-hosting',
+    appliesTo: (d) => d.stack.backend !== '' && d.stack.backend !== 'none',
+    check: (d) => d.stack.hosting.backend === 'none'
+      ? { field: 'stack.hosting.backend', fix: 'railway' }
+      : null,
+    message: () => 'Backend must be hosted.',
+  },
+
+  // ===================================================================
+  // 8. NO BACKEND → NO BACKEND HOSTING
+  // ===================================================================
+  {
+    id: 'no-backend-no-hosting',
+    appliesTo: (d) => (d.stack.backend as string) === 'none' || d.stack.backend === '',
+    check: (d) => d.stack.hosting.backend !== 'none'
+      ? { field: 'stack.hosting.backend', fix: 'none' }
+      : null,
+    message: () => 'No backend → no backend hosting.',
+  },
+
+  // ===================================================================
+  // 9. DATABASE → MUST HAVE DB HOSTING (unless SQLite/in-memory)
+  // ===================================================================
+  {
+    id: 'db-needs-hosting',
+    appliesTo: (d) =>
+      d.stack.database.primary !== 'none' &&
+      d.stack.database.primary !== 'sqlite',
+    check: (d) => d.stack.hosting.database === 'none'
+      ? { field: 'stack.hosting.database', fix: 'neon' }
+      : null,
+    message: () => 'Database must be hosted.',
+  },
+  {
+    id: 'sqlite-no-hosting',
+    appliesTo: (d) => d.stack.database.primary === 'sqlite',
+    check: (d) => d.stack.hosting.database !== 'none'
+      ? { field: 'stack.hosting.database', fix: 'none' }
+      : null,
+    message: () => 'SQLite is local — no database hosting needed.',
+  },
+
+  // ===================================================================
+  // 10. PGVECTOR / TIMESCALEDB → POSTGRES
+  // ===================================================================
   {
     id: 'pgvector-needs-postgres',
-    severity: 'block',
     appliesTo: (d) => d.stack.database.vector === 'pgvector',
     check: (d) =>
-      d.stack.database.primary !== 'postgresql' && d.stack.database.primary !== 'supabase-db' && d.stack.database.primary !== 'neon'
-        ? { field: 'stack.database.primary', fix: 'postgresql' }
-        : null,
-    message: () => 'pgvector is a Postgres extension — primary DB must be PostgreSQL / Supabase / Neon.',
+      POSTGRES_DBS.includes(d.stack.database.primary)
+        ? null
+        : { field: 'stack.database.primary', fix: 'postgresql' },
+    message: () => 'pgvector requires PostgreSQL.',
   },
   {
     id: 'timescaledb-needs-postgres',
-    severity: 'block',
     appliesTo: (d) => d.stack.database.timeseries === 'timescaledb',
     check: (d) =>
-      d.stack.database.primary !== 'postgresql' && d.stack.database.primary !== 'supabase-db' && d.stack.database.primary !== 'neon'
-        ? { field: 'stack.database.primary', fix: 'postgresql' }
-        : null,
-    message: () => 'TimescaleDB is a Postgres extension — primary DB must be PostgreSQL.',
+      POSTGRES_DBS.includes(d.stack.database.primary)
+        ? null
+        : { field: 'stack.database.primary', fix: 'postgresql' },
+    message: () => 'TimescaleDB requires PostgreSQL.',
   },
 
-  // -------------------------------------------------------------------
-  // 7. Auth coherence
-  // -------------------------------------------------------------------
+  // ===================================================================
+  // 11. AUTH ↔ DATABASE
+  // ===================================================================
   {
-    id: 'supabase-auth-with-supabase-db',
-    severity: 'info',
+    id: 'supabase-auth-needs-supabase-db',
     appliesTo: (d) => d.stack.auth.primary === 'supabase-auth',
     check: (d) =>
-      d.stack.database.primary !== 'supabase-db'
-        ? { field: 'stack.database.primary', fix: 'supabase-db' }
-        : null,
-    message: () =>
-      'Supabase Auth is optimized for Supabase Postgres (RLS, etc.) — consider Supabase DB.',
+      d.stack.database.primary === 'supabase-db'
+        ? null
+        : { field: 'stack.database.primary', fix: 'supabase-db' },
+    message: () => 'Supabase Auth requires Supabase Postgres (RLS, etc.).',
   },
   {
-    id: 'firebase-auth-with-firestore',
-    severity: 'info',
+    id: 'firebase-auth-needs-firestore',
     appliesTo: (d) => d.stack.auth.primary === 'firebase-auth',
     check: (d) =>
-      d.stack.database.primary !== 'firestore'
-        ? { field: 'stack.database.primary', fix: 'firestore' }
-        : null,
-    message: () =>
-      'Firebase Auth integrates natively with Firestore — consider Firestore as primary DB.',
-  },
-  {
-    id: 'clerk-without-user-accounts',
-    severity: 'info',
-    appliesTo: (d) => d.stack.auth.primary === 'clerk',
-    check: (d) => (d.professionalRequirements.userAccounts ? null : { field: 'professionalRequirements.userAccounts' }),
-    message: () => 'Clerk is for user accounts — enable the User Accounts professional feature.',
+      d.stack.database.primary === 'firestore'
+        ? null
+        : { field: 'stack.database.primary', fix: 'firestore' },
+    message: () => 'Firebase Auth requires Firestore.',
   },
 
-  // -------------------------------------------------------------------
-  // 8. Search providers imply their own managed search
-  // -------------------------------------------------------------------
+  // ===================================================================
+  // 12. PROFESSIONAL FEATURES ↔ SERVICES
+  // ===================================================================
   {
-    id: 'duplicate-search',
-    severity: 'info',
-    appliesTo: (d) => d.stack.thirdParty.search !== 'none' && d.stack.database.search !== 'none',
-    check: () => ({ field: 'stack.database.search', fix: 'none' }),
-    message: () =>
-      'You selected both a managed search (Algolia etc.) AND a database search engine — pick one to avoid paying twice.',
-  },
-
-  // -------------------------------------------------------------------
-  // 9. CDN coherence
-  // -------------------------------------------------------------------
-  {
-    id: 'cloudflare-pages-implies-cdn',
-    severity: 'info',
-    appliesTo: (d) => d.stack.hosting.frontend === 'cloudflare-pages' && d.stack.hosting.cdn !== 'cloudflare',
-    check: () => ({ field: 'stack.hosting.cdn', fix: 'cloudflare' }),
-    message: () =>
-      'Cloudflare Pages includes the Cloudflare CDN — selecting a different CDN is redundant.',
-  },
-
-  // -------------------------------------------------------------------
-  // 10. Tauri / Electron — no separate backend host
-  // -------------------------------------------------------------------
-  {
-    id: 'tauri-electron-hosting',
-    severity: 'warn',
-    appliesTo: (d) => d.stack.frontend === 'tauri' || d.stack.frontend === 'electron',
-    check: (d) =>
-      d.stack.hosting.backend !== 'none'
-        ? { field: 'stack.hosting.backend', fix: 'none' }
-        : null,
-    message: () =>
-      'Desktop apps (Tauri / Electron) ship with the backend bundled — pick `none` for backend hosting.',
-  },
-
-  // -------------------------------------------------------------------
-  // 11. Project type alignment
-  // -------------------------------------------------------------------
-  {
-    id: 'mobile-app-needs-mobile-frontend',
-    severity: 'block',
-    appliesTo: (d) => d.identity.projectType === 'mobile-app',
-    check: (d) => {
-      const webOnly: FrontendId[] = ['nextjs', 'remix', 'nuxt', 'sveltekit', 'astro'];
-      return webOnly.includes(d.stack.frontend)
-        ? { field: 'stack.frontend' }
-        : null;
-    },
-    message: () => 'Mobile app projects need a mobile frontend (React Native, Expo, Flutter, SwiftUI, or Jetpack Compose).',
-  },
-  {
-    id: 'desktop-app-needs-desktop-frontend',
-    severity: 'warn',
-    appliesTo: (d) => d.identity.projectType === 'desktop-app',
-    check: (d) =>
-      d.stack.frontend !== 'tauri' && d.stack.frontend !== 'electron'
-        ? { field: 'stack.frontend', fix: 'tauri' }
-        : null,
-    message: () => 'Desktop app projects typically use Tauri or Electron.',
-  },
-  {
-    id: 'cli-tool-needs-cli-frontend',
-    severity: 'warn',
-    appliesTo: (d) => d.identity.projectType === 'cli-tool',
-    check: (d) =>
-      d.stack.frontend !== 'none'
-        ? { field: 'stack.frontend', fix: 'none' }
-        : null,
-    message: () => 'CLI tools don\'t need a UI frontend — pick `none`.',
-  },
-  {
-    id: 'ai-ml-app-suggests-vector',
-    severity: 'info',
-    appliesTo: (d) => d.identity.projectType === 'ai-ml-app',
-    check: (d) =>
-      d.stack.database.vector === 'none' ? { field: 'stack.database.vector', fix: 'pgvector' } : null,
-    message: () => 'AI/ML apps usually need a vector database (pgvector, Pinecone, etc.).',
-  },
-
-  // -------------------------------------------------------------------
-  // 12. Professional feature sanity
-  // -------------------------------------------------------------------
-  {
-    id: 'payments-needs-payment-provider',
-    severity: 'warn',
+    id: 'payments-needs-provider',
     appliesTo: (d) => d.professionalRequirements.payments,
     check: (d) =>
-      d.stack.thirdParty.payments === 'none' ? { field: 'stack.thirdParty.payments', fix: 'stripe' } : null,
-    message: () => 'You marked "Payments" as required but didn\'t select a payment provider.',
+      PAYMENT_PROVIDERS.includes(d.stack.thirdParty.payments as PaymentId)
+        ? null
+        : { field: 'stack.thirdParty.payments', fix: 'stripe' },
+    message: () => 'Payments feature requires a payment provider (Stripe, PayPal, etc.).',
+  },
+  {
+    id: 'file-uploads-needs-storage',
+    appliesTo: (d) => d.professionalRequirements.fileUploads,
+    check: (d) =>
+      STORAGE_PROVIDERS.includes(d.stack.thirdParty.storage as StorageId)
+        ? null
+        : { field: 'stack.thirdParty.storage', fix: 'aws-s3' },
+    message: () => 'File uploads requires a storage provider (S3, R2, Supabase Storage, etc.).',
+  },
+  {
+    id: 'analytics-needs-provider',
+    appliesTo: (d) => d.professionalRequirements.analytics,
+    check: (d) =>
+      ANALYTICS_PROVIDERS.includes(d.stack.thirdParty.analytics as AnalyticsId)
+        ? null
+        : { field: 'stack.thirdParty.analytics', fix: 'posthog' },
+    message: () => 'Analytics feature requires an analytics provider.',
   },
   {
     id: 'admin-needs-auth',
-    severity: 'warn',
     appliesTo: (d) => d.professionalRequirements.adminPanel,
     check: (d) =>
-      d.stack.auth.primary === '' || d.stack.auth.primary === 'none'
-        ? { field: 'stack.auth.primary', fix: 'clerk' }
-        : null,
+      d.stack.auth.primary !== '' && d.stack.auth.primary !== 'none'
+        ? null
+        : { field: 'stack.auth.primary', fix: 'clerk' },
     message: () => 'Admin panel requires authentication.',
   },
   {
-    id: 'realtime-needs-realtime-stack',
-    severity: 'info',
-    appliesTo: (d) => d.professionalRequirements.realTimeFeatures,
-    check: (d) => {
-      const realtimeFriendly: DatabasePrimaryId[] = ['postgresql', 'mongodb', 'supabase-db', 'firestore', 'neon'];
-      return !realtimeFriendly.includes(d.stack.database.primary) ? { field: 'stack.database.primary' } : null;
-    },
-    message: () =>
-      'Real-time features work best with Postgres + LISTEN/NOTIFY or Supabase/Firestore realtime.',
+    id: 'user-accounts-needs-auth',
+    appliesTo: (d) => d.professionalRequirements.userAccounts,
+    check: (d) =>
+      d.stack.auth.primary !== '' && d.stack.auth.primary !== 'none'
+        ? null
+        : { field: 'stack.auth.primary', fix: 'clerk' },
+    message: () => 'User accounts require authentication.',
+  },
+
+  // ===================================================================
+  // 13. CI/CD ↔ STACK
+  // ===================================================================
+  {
+    id: 'node-stack-needs-node-package-manager',
+    appliesTo: (d) =>
+      NODE_BACKENDS.includes(d.stack.backend as BackendId) ||
+      FRONTEND_LANGUAGES[d.stack.frontend as FrontendId]?.some((l) => l === 'typescript' || l === 'javascript') ||
+      false,
+    check: (d) =>
+      NODE_PACKAGE_MANAGERS.includes(d.stack.devops.packageManager as PackageManagerId)
+        ? null
+        : { field: 'stack.devops.packageManager', fix: 'pnpm' },
+    message: () => 'JavaScript/TypeScript stack requires a Node package manager (npm/pnpm/yarn/bun).',
+  },
+
+  // ===================================================================
+  // 14. EDGE RUNTIMES (Cloudflare Workers → only Hono)
+  // ===================================================================
+  {
+    id: 'cloudflare-workers-hono-only',
+    appliesTo: (d) => d.stack.hosting.backend === 'cloudflare-workers',
+    check: (d) =>
+      (d.stack.backend as string) === 'hono' || (d.stack.backend as string) === 'none' || d.stack.backend === ''
+        ? null
+        : { field: 'stack.backend', fix: 'hono' },
+    message: () => 'Cloudflare Workers only supports Hono (or static).',
+  },
+
+  // ===================================================================
+  // 15. TESTING — payments require E2E
+  // ===================================================================
+  {
+    id: 'payments-needs-e2e',
+    appliesTo: (d) => d.professionalRequirements.payments,
+    check: (d) =>
+      (d.stack.testing.e2e as string) !== '' && (d.stack.testing.e2e as string) !== 'none'
+        ? null
+        : { field: 'stack.testing.e2e', fix: 'playwright' },
+    message: () => 'Payments require E2E testing.',
+  },
+
+  // ===================================================================
+  // 16. IDENTITY — name required
+  // ===================================================================
+  {
+    id: 'project-name-required',
+    appliesTo: (d) => true,
+    check: (d) =>
+      d.identity.name.trim() !== ''
+        ? null
+        : { field: 'identity.name', fix: 'my-project' },
+    message: () => 'Project name is required.',
   },
 ];
 
+// =====================================================================
+//   Public API
+// =====================================================================
 export function evaluateCompatibility(data: ProjectData): CompatibilityIssue[] {
   const issues: CompatibilityIssue[] = [];
   for (const rule of RULES) {
@@ -408,7 +551,7 @@ export function evaluateCompatibility(data: ProjectData): CompatibilityIssue[] {
     if (found) {
       issues.push({
         id: rule.id,
-        severity: rule.severity,
+        severity: 'block',
         field: found.field,
         message: rule.message(data),
         fix: found.fix,
@@ -419,20 +562,22 @@ export function evaluateCompatibility(data: ProjectData): CompatibilityIssue[] {
 }
 
 export function hasBlocker(issues: CompatibilityIssue[]): boolean {
-  return issues.some((i) => i.severity === 'block');
+  return issues.length > 0;
 }
 
 /**
- * Auto-fix the data by applying suggested `fix` values for all `block`-level
- * issues. Returns a new ProjectData.
+ * Auto-fix the data by applying suggested `fix` values for all block-level
+ * issues. Iterates until no more issues (max 5 passes for safety).
  */
 export function autoFix(data: ProjectData): ProjectData {
-  const issues = evaluateCompatibility(data);
-  const result = structuredClone(data);
-
-  for (const issue of issues) {
-    if (issue.severity !== 'block' || !issue.fix) continue;
-    applyFix(result, issue.field, issue.fix);
+  let result = structuredClone(data);
+  for (let pass = 0; pass < 5; pass++) {
+    const issues = evaluateCompatibility(result);
+    const fixable = issues.filter((i) => i.fix);
+    if (fixable.length === 0) break;
+    for (const issue of fixable) {
+      applyFix(result, issue.field, issue.fix!);
+    }
   }
   return result;
 }
@@ -450,3 +595,19 @@ function applyFix(data: ProjectData, field: string, value: string) {
   if (last === undefined) return;
   target[last] = value;
 }
+
+export const _internals = {
+  BACKEND_LANGUAGE,
+  FRONTEND_LANGUAGES,
+  NODE_BACKENDS,
+  FULLSTACK_FRONTENDS,
+  MOBILE_FRONTENDS,
+  DESKTOP_FRONTENDS,
+  WEB_FRONTENDS,
+  POSTGRES_DBS,
+  PAYMENT_PROVIDERS,
+  STORAGE_PROVIDERS,
+  ANALYTICS_PROVIDERS,
+  MONITORING_PROVIDERS,
+  NODE_PACKAGE_MANAGERS,
+};

@@ -5,10 +5,14 @@ import { useWizard } from '@/components/wizard/context';
 import { StepHeader } from './ProjectTypeStep';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { filterE2eTests } from '@/lib/filter';
 
 export function TestingStep() {
   const wizard = useWizard();
   const t = wizard.data.stack.testing;
+  const prof = wizard.data.professionalRequirements;
+
+  const e2eFilter = filterE2eTests(e2eTestTools as any, prof.payments, prof.userAccounts);
 
   return (
     <div className="space-y-6">
@@ -30,9 +34,10 @@ export function TestingStep() {
       />
       <Sub
         title={wizard.locale === 'ar' ? 'الاختبار الشامل (E2E)' : 'E2E testing'}
-        catalog={e2eTestTools}
+        catalog={e2eFilter.catalog}
         value={t.e2e}
         onChange={(v) => wizard.setStack('testing', { ...t, e2e: v as any })}
+        excluded={e2eFilter.excluded}
       />
       <Sub
         title={wizard.locale === 'ar' ? 'اختبار API' : 'API testing'}
@@ -85,6 +90,7 @@ function Sub<TId extends string>(props: {
   catalog: any[];
   value: TId | '' | TId[];
   onChange: (v: TId | '' | TId[]) => void;
+  excluded?: Record<string, string>;
 }) {
   const wizard = useWizard();
   return (
@@ -95,6 +101,7 @@ function Sub<TId extends string>(props: {
         value={props.value}
         onChange={props.onChange}
         locale={wizard.locale}
+        excluded={props.excluded}
       />
     </div>
   );
