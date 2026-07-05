@@ -151,24 +151,65 @@ function buildFileLayout(data: ProjectData): string {
 
   // Single-package layout
   const topDirs: string[] = [];
-  if (hasBackend && !['nextjs', 'remix', 'nuxt', 'sveltekit'].includes(s.frontend)) {
-    topDirs.push(`├── server/                # ${formatBackend(s.backend)} API`);
+  const isPythonStack = s.backend && ['django', 'fastapi', 'flask'].includes(s.backend as string);
+  const hasFrontend = !isMobileFirst && s.frontend && s.frontend !== 'none';
+
+  if (hasBackend && !['nextjs', 'remix', 'nuxt', 'sveltekit'].includes(s.frontend) && !isMobileFirst) {
+    if (isPythonStack) {
+      topDirs.push(`├── ${s.backend}/            # ${formatBackend(s.backend)} project root`);
+      topDirs.push(`│   ├── ${s.backend}/        # settings (settings.py, urls.py, wsgi.py)`);
+      topDirs.push(`│   ├── apps/                # Django apps (models, views, serializers)`);
+      topDirs.push(`│   │   ├── core/           # shared models, base classes`);
+      topDirs.push(`│   │   └── api/            # DRF views, serializers, urls`);
+      topDirs.push(`│   ├── manage.py`);
+      topDirs.push(`│   ├── requirements.txt`);
+      topDirs.push(`│   ├── pyproject.toml`);
+      topDirs.push(`│   └── tests/              # pytest suites`);
+    } else {
+      topDirs.push(`├── server/                # ${formatBackend(s.backend)} API`);
+    }
   }
   if (isMobileFirst) {
     topDirs.push(`├── mobile/                # ${formatFrontend(s.frontend)} mobile`);
   }
-  topDirs.push(`├── src/                   # ${formatFrontend(s.frontend)} frontend`);
-  topDirs.push(`│   ├── components/`);
-  topDirs.push(`│   ├── pages/  (or routes/)`);
-  topDirs.push(`│   ├── lib/`);
-  topDirs.push(`│   ├── styles/`);
-  topDirs.push(`│   └── types/`);
+  if (hasFrontend) {
+    if (isPythonStack) {
+      // Python "frontend" = templates / static served by Django
+      topDirs.push(`├── templates/             # Django/Jinja2 HTML templates`);
+      topDirs.push(`│   ├── base.html`);
+      topDirs.push(`│   └── partials/`);
+      topDirs.push(`├── static/                # CSS / JS / images`);
+      topDirs.push(`│   ├── css/`);
+      topDirs.push(`│   └── js/`);
+    } else {
+      topDirs.push(`├── src/                   # ${formatFrontend(s.frontend)} frontend`);
+      topDirs.push(`│   ├── components/`);
+      topDirs.push(`│   ├── pages/  (or routes/)`);
+      topDirs.push(`│   ├── lib/`);
+      topDirs.push(`│   ├── styles/`);
+      topDirs.push(`│   └── types/`);
+    }
+  } else if (!isMobileFirst) {
+    topDirs.push(`├── (no separate frontend directory — backend serves everything)`);
+  }
   topDirs.push(`├── tests/                  # e2e + integration`);
-  topDirs.push(`├── public/                 # static assets`);
+  if (hasFrontend) {
+    topDirs.push(`├── public/                 # static assets`);
+  }
   topDirs.push(`├── .github/workflows/      # CI/CD`);
   topDirs.push(`├── .env.example`);
-  topDirs.push(`├── package.json`);
-  topDirs.push(`├── tsconfig.json`);
+  const langId = (s as any).language as string | undefined;
+  if (isPythonStack) {
+    topDirs.push(`├── pyproject.toml`);
+    topDirs.push(`├── requirements.txt`);
+  } else if (langId === 'go') {
+    topDirs.push(`└── go.mod`);
+  } else if (langId === 'rust') {
+    topDirs.push(`└── Cargo.toml`);
+  } else {
+    topDirs.push(`├── package.json`);
+    topDirs.push(`├── tsconfig.json`);
+  }
   topDirs.push(`└── README.md`);
   return [`${name}/`, ...topDirs].join('\n');
 }
@@ -533,6 +574,90 @@ function buildPackageJsonSnippet(r: Resolved): string {
   };
   // Use minimal stub just for type safety; we only use r.slug here
   const lines: string[] = [];
+  const langId = r.language?.id ?? 'typescript';
+
+  // Python: emit pyproject.toml instead of package.json
+  if (langId === 'python') {
+    lines.push("cat > pyproject.toml <<'EOF'");
+    lines.push('[project]');
+    lines.push(`name = "${r.slug}"`);
+    lines.push(`version = "0.1.0"`);
+    lines.push(`requires-python = "${r.language?.version ?? '>=3.12'}"`);
+    lines.push('dependencies = [');
+    if (r.backend?.id === 'django') {
+      lines.push('  "Django>=5.1",');
+      lines.push('  "psycopg[binary]>=3.2",');
+      lines.push('  "django-environ>=0.11",');
+      lines.push('  "djangorestframework>=3.15",');
+      lines.push('  "gunicorn>=23.0",');
+    } else if (r.backend?.id === 'fastapi') {
+      lines.push('  "fastapi>=0.115",');
+      lines.push('  "uvicorn[standard]>=0.32",');
+      lines.push('  "pydantic>=2.9",');
+      lines.push('  "sqlalchemy>=2.0",');
+      lines.push('  "alembic>=1.13",');
+    } else if (r.backend?.id === 'flask') {
+      lines.push('  "Flask>=3.0",');
+      lines.push('  "Flask-SQLAlchemy>=3.1",');
+      lines.push('  "Flask-Migrate>=4.0",');
+      lines.push('  "gunicorn>=23.0",');
+    }
+    lines.push(']');
+    lines.push('');
+    lines.push('[project.optional-dependencies]');
+    lines.push('dev = [');
+    lines.push('  "pytest>=8.3",');
+    lines.push('  "pytest-django>=4.9",');
+    lines.push('  "pytest-cov>=6.0",');
+    lines.push('  "pytest-mock>=3.14",');
+    lines.push('  "ruff>=0.7",');
+    lines.push('  "mypy>=1.13",');
+    lines.push('  "factory-boy>=3.3",');
+    lines.push('  "faker>=30.0",');
+    lines.push(']');
+    lines.push('');
+    lines.push('[tool.ruff]');
+    lines.push('line-length = 100');
+    lines.push('target-version = "py312"');
+    lines.push('');
+    lines.push('[tool.ruff.lint]');
+    lines.push('select = ["E","F","W","I","UP","B","SIM","RUF"]');
+    lines.push('');
+    lines.push('[tool.mypy]');
+    lines.push('strict = true');
+    lines.push('warn_unused_ignores = true');
+    lines.push('');
+    lines.push('[tool.pytest.ini_options]');
+    lines.push('DJANGO_SETTINGS_MODULE = "config.settings.dev"');
+    lines.push('addopts = "-q --strict-markers --strict-config"');
+    lines.push('EOF');
+    return lines.join('\n');
+  }
+
+  if (langId === 'go') {
+    lines.push("cat > go.mod <<'EOF'");
+    lines.push(`module ${r.slug}`);
+    lines.push('');
+    lines.push(`go ${r.language?.version ?? '1.23'}`);
+    lines.push('EOF');
+    return lines.join('\n');
+  }
+
+  if (langId === 'rust') {
+    lines.push("cat > Cargo.toml <<'EOF'");
+    lines.push('[package]');
+    lines.push(`name = "${r.slug}"`);
+    lines.push('version = "0.1.0"');
+    lines.push('edition = "2021"');
+    lines.push('');
+    lines.push('[dependencies]');
+    lines.push('tokio = { version = "1", features = ["full"] }');
+    lines.push('serde = { version = "1", features = ["derive"] }');
+    lines.push('anyhow = "1"');
+    lines.push('EOF');
+    return lines.join('\n');
+  }
+
   lines.push("cat > package.json <<'EOF'");
   lines.push('{');
   lines.push(`  "name": "${r.slug}",`);
@@ -688,14 +813,9 @@ ${buildFileLayout(data)}
 
 ---
 
-## 3. Coding Conventions
+## 3. Coding Conventions${this.generateCodingConventions(r)}
 
-- **Language:** ${r.language?.name ?? 'TypeScript'} — **strict mode enabled** (\`"strict": true\`).
-- **Imports:** absolute via path alias \`@/\` → \`./src/\`.
-- **Components:** function components + hooks only. No class components.
-- **Naming:** PascalCase files for components (\`Button.tsx\`); camelCase for utilities.
-- **Errors:** every async function wraps with \`try/catch\` that logs structured + shows toast + reports to ${r.thirdParty.monitoring?.name ?? 'error tracker'}.
-- **Comments:** JSDoc on every exported function. Inline ONLY for non-obvious logic.
+- **Errors:** every async function wraps with \`try/catch\` that logs structured + reports to ${r.thirdParty.monitoring?.name ?? 'error tracker'}.
 
 ---
 
@@ -707,7 +827,7 @@ ${buildFileLayout(data)}
 | Auth cookies | httpOnly + Secure + SameSite=Strict |
 | Password hashing | bcrypt rounds=12 / argon2id |
 | Rate limiting | 100 req/min/IP, 1000 req/hour/user |
-| Input validation | ${r.backend && r.backend.id === 'fastapi' ? 'Pydantic v2 models' : 'Zod schemas'} at the API boundary |
+| Input validation | ${this.validatorChoice(r)} at the API boundary |
 | CSRF | double-submit cookie pattern |
 | Security headers | CSP, X-Frame-Options=DENY, Referrer-Policy=strict-origin-when-cross-origin |
 | Secrets | ${r.hosting.frontend?.name ?? 'platform'} env vars + ${r.devops.iac && r.devops.iac.id !== 'none' ? r.devops.iac.name : 'AWS KMS / GCP Secret Manager'} for prod |
@@ -737,12 +857,31 @@ ${this.generateUiSection(r)}
 ## 8. Testing
 
 \`\`\`bash
-${r.devops.pkg?.id === 'pnpm'
-  ? `${r.testing.unit?.id === 'vitest' ? 'pnpm test' : 'pnpm test'}              # unit
-pnpm test:e2e         # e2e
-pnpm test:coverage    # coverage report
-pnpm test:a11y        # axe-core integration`
-  : r.testing.unit?.id === 'jest' ? '# jest' : '# tests'}
+${(() => {
+  const langId = (r.language?.id ?? 'typescript') as string;
+  if (langId === 'python') {
+    return `pytest                              # unit
+pytest --integration       # integration
+pytest --cov=apps --cov-report=term-missing  # coverage
+coverage report --fail-under=${r.testing.coverage}`;
+  }
+  if (langId === 'go') {
+    return `go test ./...                       # unit
+go test -tags=e2e ./tests/e2e/...  # e2e
+go test -coverprofile=cover.out ./...`;
+  }
+  if (langId === 'rust') {
+    return `cargo test                          # unit
+cargo test --test integration         # e2e
+cargo tarpaulin --fail-under ${r.testing.coverage}  # coverage`;
+  }
+  const pkg = r.devops.pkg?.id ?? 'npm';
+  const testScript = r.testing.unit?.id === 'vitest' ? 'vitest run' : r.testing.unit?.id === 'jest' ? 'jest' : 'test';
+  return `# ${r.testing.unit?.name ?? 'unit tests'} (single test runner is the source of truth)
+${pkg} ${testScript}                                # unit
+${pkg} ${testScript} --coverage                     # coverage report (target: ${r.testing.coverage}%)
+# E2E / a11y run via Playwright/Cypress — see e2e directory.`;
+})()}
 \`\`\`
 
 Coverage target: **${r.testing.coverage}%**. Enforced in CI.
@@ -753,32 +892,89 @@ Coverage target: **${r.testing.coverage}%**. Enforced in CI.
 
 Workflow files go in \`.github/workflows/\`. Required jobs per PR:
 
-1. \`typecheck\` — \`${r.devops.pkg?.id ?? 'pnpm'} ${r.scripts.typecheck}\`
-2. \`lint\` — \`${r.devops.pkg?.id ?? 'pnpm'} ${r.scripts.lint}\`
-3. \`test\` — \`${r.devops.pkg?.id ?? 'pnpm'} test\`
-4. \`build\` — \`${r.devops.pkg?.id ?? 'pnpm'} build\`
-5. \`preview\` — deploy to ${r.hosting.frontend?.name ?? r.hosting.backend?.name ?? 'preview environment'}
+${(() => {
+  const langId = (r.language?.id ?? 'typescript') as string;
+  if (langId === 'python') {
+    return `1. \`lint\` — \`ruff check .\` then \`ruff format --check .\`
+2. \`typecheck\` — \`mypy --strict .\`
+3. \`test\` — \`pytest --maxfail=1 -q --cov=apps --cov-report=xml\`
+4. \`security\` — \`pip-audit\` + \`bandit -r apps/\`
+5. \`migrate-check\` — \`python manage.py makemigrations --check --dry-run\`
+6. \`build\` — \`python manage.py collectstatic --noinput\` then \`python manage.py check --deploy\`
+7. \`preview\` — deploy to ${r.hosting.backend?.name ?? 'preview environment'}`;
+  }
+  if (langId === 'go') {
+    return `1. \`lint\` — \`golangci-lint run ./...\`
+2. \`typecheck\` — \`go vet ./...\` then \`staticcheck ./...\`
+3. \`test\` — \`go test -race -coverprofile=cover.out ./...\`
+4. \`build\` — \`go build -o bin/app ./...\`
+5. \`preview\` — deploy to ${r.hosting.backend?.name ?? 'preview environment'}`;
+  }
+  if (langId === 'rust') {
+    return `1. \`lint\` — \`cargo fmt --check\` then \`cargo clippy -- -D warnings\`
+2. \`test\` — \`cargo test --all\`
+3. \`build\` — \`cargo build --release\`
+4. \`audit\` — \`cargo audit\`
+5. \`preview\` — deploy to ${r.hosting.backend?.name ?? 'preview environment'}`;
+  }
+  const pkg = r.devops.pkg?.id ?? 'pnpm';
+  return `1. \`typecheck\` — \`${pkg} ${r.scripts.typecheck}\`
+2. \`lint\` — \`${pkg} ${r.scripts.lint}\`
+3. \`test\` — \`${pkg} test\`
+4. \`build\` — \`${pkg} build\`
+5. \`preview\` — deploy to ${r.hosting.frontend?.name ?? r.hosting.backend?.name ?? 'preview environment'}`;
+})()}
 
 ---
 
-## 10. Performance Budgets (enforced in CI via Lighthouse)
+## 10. Performance Budgets (enforced in CI)
 
-| Metric | Target |
+${(() => {
+  const langId = (r.language?.id ?? 'typescript') as string;
+  if (langId === 'python') {
+    return `| Metric | Target |
+|--------|--------|
+| Response (p50) | < 100ms |
+| Response (p95) | < 400ms |
+| DB query (p95) | < 50ms |
+| Worker job (p95) | < 5s |
+| Static page gzip | < 200 KB |`;
+  }
+  if (langId === 'go' || langId === 'rust') {
+    return `| Metric | Target |
+|--------|--------|
+| Response (p50) | < 50ms |
+| Response (p95) | < 250ms |
+| Binary size | < 30 MB |
+| Goroutine/thread count | < 1000 / request |`;
+  }
+  return `| Metric | Target |
 |--------|--------|
 | LCP | < 2.5s |
 | CLS | < 0.1 |
 | TBT | < 300ms |
-| JS bundle (route) | < 300 KB gzipped |
+| JS bundle (route) | < 300 KB gzipped |`;
+})()}
 
 ---
 
 ## 11. Accessibility (WCAG 2.2 AA)
 
-- Semantic HTML (no \`<div onClick>\`).
+${(() => {
+  const langId = (r.language?.id ?? 'typescript') as string;
+  if (langId === 'python') {
+    return `- Semantic Django/Jinja template tags ({% url %}, {% csrf_token %}). No form helpers bypassed.
+- Visible focus rings on every \`<button>\`, \`<a>\`, \`<input>\`.
+- Color contrast ≥ 4.5:1 (text), 3:1 (large + UI).
+- django-accessibility tests in CI; build fails on serious/critical issues.
+- Keyboard navigation works for every flow.`;
+  }
+  return `- Semantic HTML (no \`<div onClick>\`).
 - Visible focus rings on every interactive element.
 - Color contrast ≥ 4.5:1 (text), 3:1 (large + UI).
 - axe-core in CI; build fails on serious/critical issues.
-- Keyboard navigation works for every flow.
+- Keyboard navigation works for every flow.`;
+})()}
 
 ---
 
@@ -822,36 +1018,106 @@ ${be === 'django' ? '- Apps per bounded context; use Django REST Framework or Dj
 ${be === 'express' || be === 'fastify' ? '- Layered structure: routes → controllers → services → repositories.\n- Use middleware for cross-cutting concerns (auth, logging, rate limit).' : ''}
 
 # === ALWAYS ===
-- Use TypeScript strict mode. No \`any\`, no \`@ts-ignore\`.
-- Use ${be === 'fastapi' ? 'Pydantic v2 models for ALL request/response bodies' : 'Zod schemas at every API boundary'}.
+${(() => {
+  const langId = (r.language?.id ?? 'typescript') as string;
+  if (langId === 'python') {
+    return `- Use Python ${r.language?.version ?? '>=3.12'} with PEP 8 + type hints everywhere.
+- Run \`ruff check .\` and \`ruff format --check .\` in CI.
+- Run \`mypy --strict\` in CI.
+- Validate inputs server-side, never trust the client.
+- Store passwords with bcrypt (rounds=12) or argon2id-cffi.
+- Sessions in httpOnly, Secure, SameSite=Lax cookies (Django: \`SESSION_COOKIE_SECURE=True\`).
+- All money as integers (cents). Never floats.
+- All timestamps as UTC (Django: \`USE_TZ=True\`, time-zone-aware datetimes).
+- Use pytest for tests with pytest-django + factory_boy. Mock external services with pytest-mock.`;
+  }
+  if (langId === 'go') {
+    return `- Use Go ${r.language?.version ?? '>=1.23'} modules with \`go vet\` + \`golangci-lint\`.
+- Validate inputs server-side, never trust the client.
+- Store passwords with bcrypt (cost=12) or argon2.
+- Use chi or stdlib mux + context for HTTP. Never \`context.Background()\` mid-chain.
+- All money as integers (cents). Never floats.
+- All timestamps as UTC, time.Time only.
+- Use \`testing\` package + table-driven tests. Mock external services.`;
+  }
+  if (langId === 'rust') {
+    return `- Use Rust ${r.language?.version ?? '>=1.81'} edition 2021 with clippy::pedantic as CI gate.
+- Validate inputs server-side, never trust the client.
+- Store passwords with bcrypt or argon2 crate.
+- All money as integers (cents). Never floats.
+- Use chrono::DateTime<Utc> for all timestamps.
+- Use built-in #[test] + #[tokio::test] for async.`;
+  }
+  return `- Use TypeScript strict mode. No \`any\`, no \`@ts-ignore\`.
+- Use ${this.validatorChoice(r)} at every API boundary.
 - Validate inputs server-side, never trust the client.
 - Store passwords with bcrypt (rounds=12) or argon2id.
 - Sessions in httpOnly, Secure, SameSite=Strict cookies.
 - All money as integers (cents). Never floats.
 - All timestamps as UTC (TIMESTAMPTZ). Format at the edge only.
 - Use ${r.testing.unit?.name ?? 'vitest'} for tests. Mock external services.
-- Type every function param and return value.
+- Type every function param and return value.`;
+})()}
 
 # === NEVER ===
 - Never store secrets in code or committed .env files.
 - Never use \`localStorage\` for JWT or any auth token.
 - Never commit console.log for debugging — use a structured logger.
 - Never use \`document.querySelector\` in React/Vue code.
-- Never disable ESLint rules to silence warnings.
+- Never disable linter rules to silence warnings.
 - Never use float for currency.
 - Never use scripts that don't match the framework choice (e.g., \`next dev\` for a Vite project).
 
 # === TESTS TO GENERATE PER NEW FILE ===
-- Every component → render test + a11y test.
+${(() => {
+  const langId = (r.language?.id ?? 'typescript') as string;
+  if (langId === 'python') {
+    return `- Every view → success + 4xx + 5xx path (\`test_<view>.py\`).
+- Every service → unit tests covering happy + error paths (\`test_<service>.py\`).
+- Every model → factory_boy + serializer round-trip.
+- Mock external services at module boundary with pytest-mock.`;
+  }
+  if (langId === 'go') {
+    return `- Every handler → success + 4xx + 5xx path (\`<handler>_test.go\`).
+- Every service → unit tests covering happy + error paths.
+- Mock external services at module boundary (httptest, sqlmock).`;
+  }
+  if (langId === 'rust') {
+    return `- Every handler → success + 4xx + 5xx path (\`<module>_test.rs\`).
+- Every service → unit tests covering happy + error paths.
+- Mock external services with wiremock-rs or testcontainers.`;
+  }
+  return `- Every component → render test + a11y test.
 - Every route handler → success + 4xx + 5xx path.
 - Every service → unit tests covering happy + error paths.
-- Mock external services at module boundary.
+- Mock external services at module boundary.`;
+})()}
 
 # === FILE NAMING ===
-- React components  : PascalCase — Button.tsx
+${(() => {
+  const langId = (r.language?.id ?? 'typescript') as string;
+  if (langId === 'python') {
+    return `- Modules     : snake_case — \`user_profile.py\`
+- Classes     : PascalCase — \`UserProfile\`
+- Functions   : snake_case — \`format_date()\`
+- Tests       : \`test_*.py\` next to the code they cover
+- Migrations  : \`<app>/migrations/0001_initial.py\` (auto-generated)`;
+  }
+  if (langId === 'go') {
+    return `- Packages    : lowercase, single word — \`userprofile\`
+- Files       : snake_case — \`user_profile.go\`
+- Tests       : \`<file>_test.go\` next to the code they cover`;
+  }
+  if (langId === 'rust') {
+    return `- Modules     : snake_case — \`user_profile.rs\`
+- Types       : PascalCase — \`UserProfile\`
+- Tests       : nested \`#[cfg(test)]\` or in \`tests/\` directory`;
+  }
+  return `- React components  : PascalCase — Button.tsx
 - Utilities        : camelCase — formatDate.ts
 - Route handlers   : kebab-case — user-profile/route.ts
-- Tests            : *.test.tsx or *.spec.ts
+- Tests            : *.test.tsx or *.spec.ts`;
+})()}
 `;
   }
 
@@ -953,6 +1219,20 @@ export type User = z.infer<typeof UserSchema>;
 \`\`\``;
     }
     if (db === 'SQLite') {
+      const langId = (r.language?.id ?? 'typescript') as string;
+      if (langId === 'python') {
+        return `\`\`\`sql
+-- Local SQLite. Access via SQLAlchemy 2.x or Django ORM.
+CREATE TABLE users (
+  id TEXT PRIMARY KEY,            -- uuid v4 (stored as text)
+  email TEXT UNIQUE NOT NULL,
+  display_name TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+\`\`\``;
+      }
       return `\`\`\`sql
 -- Local SQLite. Use better-sqlite3 with Drizzle ORM.
 CREATE TABLE users (
@@ -964,6 +1244,16 @@ CREATE TABLE users (
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 \`\`\``;
+    }
+    const langId = (r.language?.id ?? 'typescript') as string;
+    if (langId === 'python') {
+      return `Define models with SQLAlchemy 2.x (declarative + Mapped types) or Django ORM. Every model MUST have: id (UUID, server_default), created_at (TIMESTAMPTZ), updated_at (TIMESTAMPTZ). Soft-delete via deleted_at where appropriate. Use Alembic (SQLAlchemy) or Django migrations exclusively — never edit migrations by hand.`;
+    }
+    if (langId === 'go') {
+      return `Define entities with GORM or sqlc-generated models. Every entity MUST have: id (UUID), created_at, updated_at. Use go-migrate for migrations.`;
+    }
+    if (langId === 'rust') {
+      return `Define models with SQLx (compile-time checked queries) or Diesel. Every entity MUST have: id (UUID), created_at, updated_at.`;
     }
     return `Define schemas using Prisma (recommended) or Drizzle ORM. All entities MUST have: id (UUID), createdAt, updatedAt. Soft-delete via deletedAt where appropriate.`;
   }
@@ -977,20 +1267,104 @@ CREATE TABLE users (
     if (!r.backend || r.backend.id === 'none') {
       return 'No backend. Use static / serverless routes only.';
     }
+    const langId = (r.language?.id ?? 'typescript') as string;
+    const validator =
+      langId === 'python'
+        ? r.backend.id === 'fastapi'
+          ? 'Pydantic v2'
+          : r.backend.id === 'django'
+          ? 'DRF serializers + Django Forms'
+          : 'pydantic + marshmallow'
+        : langId === 'go'
+        ? 'go-playground/validator + binding tags'
+        : langId === 'rust'
+        ? 'serde + validator crate'
+        : 'Zod';
     return `RESTful endpoints under \`/api/v1/\`. Each endpoint:
-- Validates input with ${r.backend.id === 'fastapi' ? 'Pydantic v2' : 'Zod'}
+- Validates input with **${validator}**
 - Returns 2xx with DTO or 4xx/5xx with { error: { code, message } }
 - Requires auth (except /health, /auth/*)
 - Logs every request with correlation ID`;
   }
 
+  private validatorChoice(r: Resolved): string {
+    const langId = (r.language?.id ?? 'typescript') as string;
+    const be = r.backend?.id ?? '';
+    if (langId === 'python') {
+      if (be === 'fastapi') return 'Pydantic v2 models';
+      if (be === 'django') return 'DRF serializers + Django Forms';
+      if (be === 'flask') return 'pydantic + marshmallow schemas';
+      return 'Pydantic v2 models';
+    }
+    if (langId === 'go') return 'go-playground/validator + binding tags';
+    if (langId === 'rust') return 'serde + validator crate';
+    return 'Zod schemas';
+  }
+
   private generateUiSection(r: Resolved): string {
+    if (r.frontend?.id === 'none' || !r.frontend?.id || (r.frontend as any) === '') {
+      return `This project uses server-rendered templates (or no separate UI layer). All HTML lives under /templates/. No JSX or React-style component libraries apply — use Django templates + HTMX/Turbo, or Jinja2 for pure-API projects.`;
+    }
     return `Components live in src/components/. For every shared component:
 - Storybook story (or equivalent) at .stories.tsx
 - a11y: keyboard navigable, visible focus, ARIA labels
 - Dark mode via CSS variables (no JS theme)
 - Responsive: mobile-first (320 → 1920px)
 ${r.design.comp?.id === 'shadcn-ui' ? '- Use shadcn/ui primitives — install via `pnpm dlx shadcn@latest add <name>`' : ''}`;
+  }
+
+  private generateCodingConventions(r: Resolved): string {
+    const lang = (r.language?.id ?? 'typescript') as string;
+
+    // Python / Django / FastAPI / Flask
+    if (lang === 'python') {
+      return `
+
+- **Language:** Python ${r.language?.version ?? '>=3.12'} with **type hints** everywhere (\`from __future__ import annotations\`).
+- **Style:** PEP 8 + Ruff formatter (\`ruff format\` + \`ruff check .\`).
+- **Type checking:** mypy in strict mode (\`--strict\`, \`--warn-unused-ignores\`).
+- **Imports:** absolute imports only. Group: stdlib → third-party → local. Use \`apps.<app>.models\` style, never \`from .models\`.
+- **Naming:** \`snake_case\` for functions/variables/modules, \`PascalCase\` for classes, \`UPPER_SNAKE_CASE\` for constants.
+- **Tests:** pytest + pytest-django. Every test file = \`test_<thing>.py\`. Use factories (factory_boy) not fixtures for objects.
+- **Async:** \`async def\` only when truly I/O-bound. CPU work stays sync.
+- **Comments:** docstrings on every public function/class (\`"""triple quotes"""\`). Google style preferred.
+- **No type:\`any\`:** use \`typing.Any\` only as a last resort and with comment.`;
+    }
+
+    // Go
+    if (lang === 'go') {
+      return `
+
+- **Language:** Go ${r.language?.version ?? '>=1.23'} (modules, \`go mod\`).
+- **Style:** \`gofmt\` + \`go vet\` + \`golangci-lint\`.
+- **Errors:** always check them. Wrap with \`fmt.Errorf("...: %w", err)\`.
+- **Naming:** \`CamelCase\` for exported, \`camelCase\` for unexported. No \`_\` in identifiers.
+- **Logging:** use \`slog\` from stdlib.
+- **Tests:** standard testing package + table-driven tests. File = \`<thing>_test.go\`.
+- **HTTP:** \`net/http\` with chi or stdlib mux. Context-first signatures.`;
+    }
+
+    // Rust
+    if (lang === 'rust') {
+      return `
+
+- **Language:** Rust ${r.language?.version ?? '>=1.81'} (edition 2021).
+- **Style:** \`rustfmt\` + \`clippy::pedantic\` warnings as errors.
+- **Errors:** \`thiserror\` for crates, \`anyhow\` for apps. Never \`unwrap()\` in production paths.
+- **Naming:** \`snake_case\` files/modules, \`PascalCase\` types, \`SCREAMING_SNAKE_CASE\` consts.
+- **Concurrency:** \`tokio\` runtime. \`async fn\` for I/O. \`Send + Sync\` only when needed.
+- **Tests:** built-in \`#[test]\` + \`#[tokio::test]\` for async. Integration tests in \`tests/\` dir.
+- **Web:** \`axum\` or \`actix-web\` (matches chosen backend).`;
+    }
+
+    // Default = JS / TS family
+    return `
+
+- **Language:** ${r.language?.name ?? 'TypeScript'} — **strict mode enabled** (\`"strict": true\`).
+- **Imports:** absolute via path alias \`@/\` → \`./src/\`.
+- **Components:** function components + hooks only. No class components.
+- **Naming:** PascalCase files for components (\`Button.tsx\`); camelCase for utilities.
+- **Comments:** JSDoc on every exported function. Inline ONLY for non-obvious logic.`;
   }
 }
 
@@ -1006,18 +1380,39 @@ function dataNeedsGDPR(data: ProjectData): boolean {
 }
 
 function generateDoD(r: Resolved, _data: ProjectData): string {
-  const items: string[] = [
-    '- [ ] All TypeScript files compile with strict mode, zero `any`',
-    '- [ ] No ESLint warnings, no console.log left in code',
+  const langId = (r.language?.id ?? 'typescript') as string;
+  const items: string[] = [];
+  if (langId === 'python') {
+    items.push('- [ ] `ruff check .` and `ruff format --check .` produce no errors');
+    items.push('- [ ] `mypy --strict .` passes with zero errors');
+    items.push('- [ ] All Django migrations generated via `manage.py makemigrations` (no hand-edits)');
+    items.push('- [ ] `python manage.py check --deploy` produces no warnings');
+  } else if (langId === 'go') {
+    items.push('- [ ] `golangci-lint run ./...` produces no errors');
+    items.push('- [ ] `go vet ./...` and `staticcheck ./...` produce no warnings');
+  } else if (langId === 'rust') {
+    items.push('- [ ] `cargo fmt --check` and `cargo clippy -- -D warnings` produce no errors');
+    items.push('- [ ] `cargo audit` reports no advisories');
+  } else {
+    items.push('- [ ] All TypeScript files compile with strict mode, zero `any`');
+    items.push('- [ ] No ESLint warnings, no console.log left in code');
+  }
+  items.push(
     `- [ ] Test coverage ≥ ${r.testing.coverage}% (enforced in CI)`,
-    '- [ ] Lighthouse CI passes: LCP < 2.5s, CLS < 0.1, TBT < 300ms',
-    '- [ ] axe-core shows zero serious/critical issues',
+  );
+  if (langId === 'python') {
+    items.push('- [ ] Response time p95 < 400ms (Django + DB queries profiled)');
+  } else {
+    items.push('- [ ] Lighthouse CI passes: LCP < 2.5s, CLS < 0.1, TBT < 300ms');
+    items.push('- [ ] axe-core shows zero serious/critical issues');
+  }
+  items.push(
     '- [ ] All API endpoints have unit + integration tests',
     '- [ ] Auth uses httpOnly cookies, passwords hashed',
     '- [ ] All timestamps are UTC',
     '- [ ] README explains setup, scripts, and architecture',
     '- [ ] Preview deployment works on every PR',
-  ];
+  );
   if (r.thirdParty.payments && r.thirdParty.payments.id !== 'none') {
     items.push('- [ ] Payment flows (success + failure + webhook) covered by E2E tests');
   }
