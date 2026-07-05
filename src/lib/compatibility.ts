@@ -535,7 +535,7 @@ const RULES: Rule[] = [
     check: (d) =>
       d.identity.name.trim() !== ''
         ? null
-        : { field: 'identity.name', fix: 'my-project' },
+        : { field: 'identity.name', fix: '' },
     message: () => 'Project name is required.',
   },
 ];
