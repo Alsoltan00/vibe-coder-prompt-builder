@@ -496,70 +496,76 @@ function buildSetupCommands(r: Resolved): string {
   const lines: string[] = [];
   if (enableCmd) lines.push(enableCmd);
 
-  // Scaffold commands per framework — all use the framework's official scaffolder
-  if (fr === 'nextjs') {
-    lines.push(`pnpm create next-app@latest ${name} --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --use-pnpm`);
-  } else if (fr === 'remix') {
-    lines.push(`pnpm create remix@latest ${name} --template remix-run/remix/templates/remix --typescript --install --package-manager pnpm`);
-  } else if (fr === 'nuxt') {
-    lines.push(`pnpm dlx nuxi@latest init ${name} -t v3 --packageManager pnpm --gitInit false`);
-  } else if (fr === 'sveltekit') {
-    lines.push(`pnpm dlx sv create ${name} --template minimal --types ts --no-add-ons --install pnpm`);
-  } else if (fr === 'astro') {
-    lines.push(`pnpm create astro@latest ${name} --template minimal --typescript strict --install --git --skip-houston --yes`);
-  } else if (['react', 'vue', 'preact', 'solid', 'svelte', 'lit'].includes(fr)) {
-    const tmpl =
-      fr === 'react' ? 'react-ts' :
-        fr === 'vue' ? 'vue-ts' :
-          fr === 'preact' ? 'preact-ts' :
-            fr === 'solid' ? 'solid-ts' :
-              fr === 'svelte' ? 'svelte-ts' :
-                'lit-ts';
-    lines.push(`pnpm create vite@latest ${name} --template ${tmpl}`);
-  } else if (fr === 'angular') {
-    lines.push(`pnpm dlx @angular/cli new ${name} --routing --style=css --strict --skip-git --package-manager=pnpm --defaults`);
-  } else if (fr === 'qwik') {
-    lines.push(`pnpm create qwik@latest empty ${name}`);
-  } else if (fr === 'ember') {
-    lines.push(`pnpm dlx ember-cli new ${name} --skip-npm --skip-git --typescript`);
-  } else if (fr === 'expo') {
-    lines.push(`pnpm create expo-app@latest ${name} --template blank-typescript`);
-  } else if (fr === 'react-native') {
-    lines.push(`pnpm dlx @react-native-community/cli init ${name} --version latest --pm pnpm --skip-install`);
-  } else if (fr === 'flutter') {
-    lines.push(`flutter create ${name} --platforms=ios,android --org com.example`);
-  } else if (fr === 'swiftui') {
-    lines.push(`xedoes -create-executable-for-xcode ${name}.xcodeproj`);
-  } else if (fr === 'jetpack-compose') {
-    lines.push(`studio -g ${name}`);
-  } else if (fr === 'tauri') {
-    lines.push(`pnpm create tauri-app@latest ${name} --template react-ts --manager pnpm --identifier com.${name}.app --yes`);
-  } else if (fr === 'electron') {
-    // Electron Forge is the official scaffolder; create-electron-app wraps it
-    lines.push(`npm init electron-app@latest ${name} -- --template=webpack-typescript`);
+  const fullstackFrameworks = ['nextjs', 'remix', 'nuxt', 'sveltekit', 'astro'];
+  const isFullstack = fr && fullstackFrameworks.includes(fr);
+  const isMonorepo = fr && fr !== 'none' && be && be !== 'none' && !isFullstack;
+
+  if (isMonorepo) {
+    lines.push(`mkdir ${name}`);
     lines.push(`cd ${name}`);
-    lines.push(`# Install pnpm after scaffold (Electron Forge creates npm project by default)`);
-    lines.push(`corepack enable pnpm`);
-    lines.push(`# Convert to pnpm workspaces`);
-    lines.push(`pnpm import`);
-    lines.push(`rm -f package-lock.json`);
-  } else if (be === 'django') {
-    lines.push(`pip install Django psycopg2-binary && django-admin startproject ${name} .`);
-  } else if (be === 'fastapi') {
-    lines.push(`mkdir ${name} && cd ${name} && python -m venv .venv && source .venv/bin/activate && pip install fastapi uvicorn[standard]`);
-  } else if (be === 'flask') {
-    lines.push(`mkdir ${name} && cd ${name} && python -m venv .venv && source .venv/bin/activate && pip install flask`);
-  } else if (be === 'spring-boot') {
-    lines.push(`curl https://start.spring.io/starter.zip -d dependencies=web,data-jpa,postgresql -d name=${name} -d type=maven-project -o ${name}.zip && unzip ${name}.zip -d ${name}`);
-  } else if (be === 'rails') {
-    lines.push(`rails new ${name} --database=postgresql --skip-git --skip-test=false`);
-  } else if (be === 'laravel') {
-    lines.push(`composer create-project laravel/laravel ${name}`);
-  } else if (be === 'gin') {
-    lines.push(`mkdir ${name} && cd ${name} && go mod init ${name}`);
+    if (pkg === 'pnpm') {
+      lines.push(`pnpm init`);
+      lines.push(`echo -e "packages:\\n  - 'apps/*'\\n  - 'packages/*'" > pnpm-workspace.yaml`);
+    } else {
+      lines.push(`npm init -y`);
+    }
+    lines.push(`mkdir apps`);
+    lines.push(`cd apps`);
   }
 
-  lines.push(`cd ${name}`);
+  const scaffoldFrontend = (folderName: string) => {
+    if (fr === 'nextjs') return `pnpm create next-app@latest ${folderName} --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --use-pnpm`;
+    if (fr === 'remix') return `pnpm create remix@latest ${folderName} --template remix-run/remix/templates/remix --typescript --install --package-manager pnpm`;
+    if (fr === 'nuxt') return `pnpm dlx nuxi@latest init ${folderName} -t v3 --packageManager pnpm --gitInit false`;
+    if (fr === 'sveltekit') return `pnpm dlx sv create ${folderName} --template minimal --types ts --no-add-ons --install pnpm`;
+    if (fr === 'astro') return `pnpm create astro@latest ${folderName} --template minimal --typescript strict --install --git --skip-houston --yes`;
+    if (['react', 'vue', 'preact', 'solid', 'svelte', 'lit'].includes(fr)) {
+      const tmpl = fr === 'react' ? 'react-ts' : fr === 'vue' ? 'vue-ts' : fr === 'preact' ? 'preact-ts' : fr === 'solid' ? 'solid-ts' : fr === 'svelte' ? 'svelte-ts' : 'lit-ts';
+      return `pnpm create vite@latest ${folderName} --template ${tmpl}`;
+    }
+    if (fr === 'angular') return `pnpm dlx @angular/cli new ${folderName} --routing --style=css --strict --skip-git --package-manager=pnpm --defaults`;
+    if (fr === 'qwik') return `pnpm create qwik@latest empty ${folderName}`;
+    if (fr === 'ember') return `pnpm dlx ember-cli new ${folderName} --skip-npm --skip-git --typescript`;
+    if (fr === 'expo') return `pnpm create expo-app@latest ${folderName} --template blank-typescript`;
+    if (fr === 'react-native') return `pnpm dlx @react-native-community/cli init ${folderName} --version latest --pm pnpm --skip-install`;
+    if (fr === 'flutter') return `flutter create ${folderName} --platforms=ios,android --org com.example`;
+    if (fr === 'tauri') return `pnpm create tauri-app@latest ${folderName} --template react-ts --manager pnpm --identifier com.${folderName}.app --yes`;
+    if (fr === 'electron') return `npm init electron-app@latest ${folderName} -- --template=webpack-typescript\ncd ${folderName}\ncorepack enable pnpm\npnpm import\nrm -f package-lock.json`;
+    return '';
+  };
+
+  const scaffoldBackend = (folderName: string) => {
+    if (be === 'django') return `pip install Django psycopg2-binary && django-admin startproject ${folderName} .`;
+    if (be === 'fastapi') return `mkdir ${folderName} && cd ${folderName} && python -m venv .venv && source .venv/bin/activate && pip install fastapi uvicorn[standard]`;
+    if (be === 'flask') return `mkdir ${folderName} && cd ${folderName} && python -m venv .venv && source .venv/bin/activate && pip install flask`;
+    if (be === 'spring-boot') return `curl https://start.spring.io/starter.zip -d dependencies=web,data-jpa,postgresql -d name=${folderName} -d type=maven-project -o ${folderName}.zip && unzip ${folderName}.zip -d ${folderName}`;
+    if (be === 'rails') return `rails new ${folderName} --database=postgresql --skip-git --skip-test=false`;
+    if (be === 'laravel') return `composer create-project laravel/laravel ${folderName}`;
+    if (be === 'gin' || be === 'echo' || be === 'fiber') return `mkdir ${folderName} && cd ${folderName} && go mod init ${folderName}`;
+    if (be === 'express' || be === 'fastify' || be === 'nestjs') return `mkdir ${folderName} && cd ${folderName} && ${pkg} init`;
+    return '';
+  };
+
+  if (isMonorepo) {
+    const fCmd = scaffoldFrontend('web');
+    if (fCmd) lines.push(fCmd);
+    const bCmd = scaffoldBackend('api');
+    if (bCmd) lines.push(bCmd);
+    lines.push(`cd ..`); // back to root from apps
+  } else {
+    // Single app
+    if (fr && fr !== 'none') {
+      const cmd = scaffoldFrontend(name);
+      if (cmd) lines.push(cmd);
+      if (!cmd.includes(`cd ${name}`)) lines.push(`cd ${name}`);
+    } else if (be && be !== 'none') {
+      const cmd = scaffoldBackend(name);
+      if (cmd) lines.push(cmd);
+      if (!cmd.includes(`cd ${name}`) && !cmd.includes(`mkdir ${name} && cd ${name}`)) lines.push(`cd ${name}`);
+    } else {
+      lines.push(`mkdir ${name} && cd ${name}`);
+    }
+  }
 
   if (lang === 'typescript' || lang === 'javascript') {
     lines.push(`# Apply pinned versions to package.json`);
@@ -964,53 +970,11 @@ ${dataNeedsGDPR(data) ? '| GDPR/CCPA | data export, 30-day deletion grace, conse
 
 ---
 
-## 4b. Environment Variables (Type-Safe)
+${buildEnvValidationSnippet(r)}
 
-${(() => {
-  const isNext = r.frontend?.id === 'nextjs';
-  const envPkg = isNext ? '@t3-oss/env-nextjs' : '@t3-oss/env-core';
-  const lines = [];
-  lines.push(`Create \`src/env.ts\` with strict Zod validation:\
-\`\`\`ts\
-import { createEnv } from "${envPkg}";\
-import { z } from "zod";\
-\
-export const env = createEnv({\
-  server: {`);
-  if (r.db.primary && r.db.primary.id !== 'none' && r.db.primary.id !== 'sqlite') {
-    lines.push(`    DATABASE_URL: z.string().url(),`);
-  }
-  if (r.auth.primary && r.auth.primary.id !== 'none') {
-    lines.push(`    AUTH_SECRET: z.string().min(32),`);
-  }
-  if (r.thirdParty.payments && r.thirdParty.payments.id !== 'none') {
-    const prefix = r.thirdParty.payments.id === 'stripe' ? 'STRIPE' : r.thirdParty.payments.id === 'lemonsqueezy' ? 'LEMON_SQUEEZY' : 'PAYMENT';
-    lines.push(`    ${prefix}_SECRET_KEY: z.string().min(1),`);
-    lines.push(`    ${prefix}_WEBHOOK_SECRET: z.string().min(1),`);
-  }
-  if (r.thirdParty.monitoring && r.thirdParty.monitoring.id === 'sentry') {
-    lines.push(`    SENTRY_DSN: z.string().url(),`);
-  }
-  if (r.thirdParty.storage && r.thirdParty.storage.id !== 'none') {
-    lines.push(`    S3_BUCKET: z.string().min(1),`);
-    lines.push(`    S3_REGION: z.string().min(1),`);
-  }
-  lines.push(`  },`);
-  if (isNext || r.frontend?.id === 'react' || r.frontend?.id === 'vue' || r.frontend?.id === 'svelte') {
-    const prefix = isNext ? 'NEXT_PUBLIC_' : 'VITE_';
-    lines.push(`  client: {`);
-    lines.push(`    ${prefix}APP_URL: z.string().url(),`);
-    if (r.thirdParty.analytics && r.thirdParty.analytics.id !== 'none') {
-      lines.push(`    ${prefix}ANALYTICS_ID: z.string().min(1),`);
-    }
-    lines.push(`  },`);
-  }
-  lines.push(`});\
-\`\`\`\
-\
-**Rule:** Import \`env\` from this file everywhere. Never use \`process.env\` directly.`);
-  return lines.join('\n');
-})()}
+${buildDockerSnippet(r)}
+
+${buildCiCdSnippet(r)}
 
 ---
 
@@ -1627,3 +1591,198 @@ function placeholderData(_r: Resolved): ProjectData {
 }
 
 
+
+
+// =====================================================================
+//   Vibe-Coder 3.0: Enterprise Code Injection Snippets
+// =====================================================================
+
+function buildDockerSnippet(r: Resolved): string {
+  const isGo = r.language?.id === 'go';
+  const isRust = r.language?.id === 'rust';
+  const isPython = r.language?.id === 'python';
+  const isNext = r.frontend?.id === 'nextjs';
+  const isNuxt = r.frontend?.id === 'nuxt';
+
+  let dockerfile = '';
+  if (isGo) {
+    dockerfile = `
+FROM golang:1.22-alpine AS builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+
+FROM gcr.io/distroless/static:nonroot
+WORKDIR /
+COPY --from=builder /app/main .
+USER 65532:65532
+EXPOSE 8080
+CMD ["/main"]`;
+  } else if (isRust) {
+    dockerfile = `
+FROM rust:1.81 as builder
+WORKDIR /usr/src/app
+COPY . .
+RUN cargo build --release
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /usr/src/app/target/release/app /usr/local/bin/app
+EXPOSE 8080
+CMD ["app"]`;
+  } else if (isPython) {
+    dockerfile = `
+FROM python:3.12-slim AS builder
+WORKDIR /app
+RUN pip install uv
+COPY pyproject.toml requirements.txt ./
+RUN uv pip install --system -r requirements.txt
+
+FROM python:3.12-slim
+WORKDIR /app
+COPY --from=builder /usr/local/lib/python3.12/site-packages/ /usr/local/lib/python3.12/site-packages/
+COPY --from=builder /usr/local/bin/ /usr/local/bin/
+COPY . .
+EXPOSE 8000
+CMD ["gunicorn", "core.wsgi:application", "--bind", "0.0.0.0:8000"]`;
+  } else if (isNext) {
+    dockerfile = `
+FROM node:20-alpine AS base
+
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+COPY package.json pnpm-lock.yaml* ./
+RUN corepack enable pnpm && pnpm i --frozen-lockfile
+
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN corepack enable pnpm && pnpm build
+
+FROM base AS runner
+WORKDIR /app
+ENV NODE_ENV production
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+USER nextjs
+EXPOSE 3000
+ENV PORT 3000
+CMD ["node", "server.js"]`;
+  } else {
+    // Generic Node.js Dockerfile
+    dockerfile = `
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package.json pnpm-lock.yaml* ./
+RUN corepack enable pnpm && pnpm i --frozen-lockfile
+COPY . .
+RUN corepack enable pnpm && pnpm build
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV production
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/package.json ./
+RUN corepack enable pnpm && pnpm i --prod
+EXPOSE 3000
+CMD ["npm", "start"]`;
+  }
+
+  return `\n## 4c. Containerization (Docker)\n\nCreate exactly this \`Dockerfile\`:\n\`\`\`dockerfile${dockerfile}\n\`\`\`\n`;
+}
+
+function buildCiCdSnippet(r: Resolved): string {
+  const isGo = r.language?.id === 'go';
+  const isRust = r.language?.id === 'rust';
+  const isPython = r.language?.id === 'python';
+  
+  let steps = '';
+  if (isGo) {
+    steps = `
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - run: go vet ./...
+      - run: go test -v ./...`;
+  } else if (isRust) {
+    steps = `
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          components: clippy
+      - run: cargo clippy -- -D warnings
+      - run: cargo test`;
+  } else if (isPython) {
+    steps = `
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install uv && uv pip install --system -r requirements.txt
+      - run: ruff check .
+      - run: pytest`;
+  } else {
+    steps = `
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: corepack enable pnpm
+      - run: pnpm install
+      - run: pnpm lint
+      - run: pnpm test`;
+  }
+
+  return `\n## 4d. CI/CD Pipeline\n\nCreate exactly this \`.github/workflows/ci.yml\`:\n\`\`\`yaml\nname: CI\non: [push, pull_request]\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4${steps}\n\`\`\`\n`;
+}
+
+
+
+function buildEnvValidationSnippet(r: Resolved): string {
+  const isNext = r.frontend?.id === 'nextjs';
+  const envPkg = isNext ? '@t3-oss/env-nextjs' : '@t3-oss/env-core';
+  const isNode = ['typescript', 'javascript'].includes(r.language?.id ?? '');
+  
+  if (!isNode) {
+    return `## 4b. Environment Variables (Type-Safe)\n\nUse ` + (r.language?.id === 'python' ? 'pydantic-settings' : 'env struct') + ` to strictly validate env variables on startup. Never use raw os.environ.\n`;
+  }
+
+  const lines = [];
+  lines.push(`## 4b. Environment Variables (Type-Safe)\n\nCreate \`src/env.ts\` with strict Zod validation:\n\`\`\`ts\nimport { createEnv } from "${envPkg}";\nimport { z } from "zod";\n\nexport const env = createEnv({\n  server: {`);
+  if (r.db.primary && r.db.primary.id !== 'none' && r.db.primary.id !== 'sqlite') {
+    lines.push(`    DATABASE_URL: z.string().url(),`);
+  }
+  if (r.auth.primary && r.auth.primary.id !== 'none') {
+    lines.push(`    AUTH_SECRET: z.string().min(32),`);
+  }
+  if (r.thirdParty.payments && r.thirdParty.payments.id !== 'none') {
+    const prefix = r.thirdParty.payments.id === 'stripe' ? 'STRIPE' : r.thirdParty.payments.id === 'lemonsqueezy' ? 'LEMON_SQUEEZY' : 'PAYMENT';
+    lines.push(`    ${prefix}_SECRET_KEY: z.string().min(1),`);
+    lines.push(`    ${prefix}_WEBHOOK_SECRET: z.string().min(1),`);
+  }
+  if (r.thirdParty.monitoring && r.thirdParty.monitoring.id === 'sentry') {
+    lines.push(`    SENTRY_DSN: z.string().url(),`);
+  }
+  if (r.thirdParty.storage && r.thirdParty.storage.id !== 'none') {
+    lines.push(`    S3_BUCKET: z.string().min(1),`);
+    lines.push(`    S3_REGION: z.string().min(1),`);
+  }
+  lines.push(`  },`);
+  if (isNext || r.frontend?.id === 'react' || r.frontend?.id === 'vue' || r.frontend?.id === 'svelte') {
+    const prefix = isNext ? 'NEXT_PUBLIC_' : 'VITE_';
+    lines.push(`  client: {`);
+    lines.push(`    ${prefix}APP_URL: z.string().url(),`);
+    if (r.thirdParty.analytics && r.thirdParty.analytics.id !== 'none') {
+      lines.push(`    ${prefix}ANALYTICS_ID: z.string().min(1),`);
+    }
+    lines.push(`  },`);
+  }
+  lines.push(`});\n\`\`\`\n\n**Rule:** Import \`env\` from this file everywhere. Never use \`process.env\` directly.\n`);
+  return lines.join('\n');
+}
