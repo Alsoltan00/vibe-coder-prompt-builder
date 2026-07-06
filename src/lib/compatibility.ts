@@ -368,6 +368,14 @@ const RULES: Rule[] = [
       : null,
     message: () => 'No backend → no backend hosting.',
   },
+  {
+    id: 'no-frontend-no-hosting',
+    appliesTo: (d) => (d.stack.frontend as string) === 'none' || d.stack.frontend === '',
+    check: (d) => d.stack.hosting.frontend !== 'none'
+      ? { field: 'stack.hosting.frontend', fix: 'none' }
+      : null,
+    message: () => 'No frontend → no frontend hosting.',
+  },
 
   // ===================================================================
   // 9. DATABASE → MUST HAVE DB HOSTING (unless SQLite/in-memory)
@@ -498,6 +506,39 @@ const RULES: Rule[] = [
         ? null
         : { field: 'stack.devops.packageManager', fix: 'pnpm' },
     message: () => 'JavaScript/TypeScript stack requires a Node package manager (npm/pnpm/yarn/bun).',
+  },
+  {
+    id: 'non-node-stack-needs-correct-package-manager',
+    appliesTo: (d) => {
+      const isNodeLanguage = d.language === 'typescript' || d.language === 'javascript';
+      const backendIsNode = d.stack.backend && NODE_BACKENDS.includes(d.stack.backend as BackendId);
+      const frontendIsNode = d.stack.frontend && (FRONTEND_LANGUAGES[d.stack.frontend as FrontendId] as string[] | undefined)?.some(
+        (l: string) => l === 'typescript' || l === 'javascript'
+      );
+      return !isNodeLanguage && !backendIsNode && !frontendIsNode && d.language !== '';
+    },
+    check: (d) => {
+      // If we are here, it's purely non-Node. If it still has a node package manager, it's invalid.
+      if (NODE_PACKAGE_MANAGERS.includes(d.stack.devops.packageManager as PackageManagerId)) {
+        let def = 'uv'; // default for python
+        if (d.language === 'go') def = 'go-modules';
+        else if (d.language === 'rust') def = 'cargo';
+        else if (d.language === 'java') def = 'maven';
+        else if (d.language === 'ruby') def = 'bundler';
+        else if (d.language === 'php') def = 'composer';
+        return { field: 'stack.devops.packageManager', fix: def };
+      }
+      return null;
+    },
+    message: (d) => `${d.language} stack requires a language-specific package manager.`,
+  },
+  {
+    id: 'no-frontend-no-vercel-deploy',
+    appliesTo: (d) => (d.stack.frontend as string) === 'none' || d.stack.frontend === '',
+    check: (d) => d.stack.devops.cd === 'vercel-deploy' || d.stack.devops.cd === 'netlify-deploy'
+      ? { field: 'stack.devops.cd', fix: 'none' }
+      : null,
+    message: () => 'Vercel/Netlify deploy are for frontends. If there is no frontend, use something else (e.g., none/docker).',
   },
 
   // ===================================================================

@@ -14,6 +14,7 @@ import {
   filterBackendHostings,
   filterDatabaseHostings,
 } from '@/lib/filter';
+import { MOBILE_FRONTENDS, DESKTOP_FRONTENDS } from '@/lib/compatibility';
 
 type Tab = 'frontend' | 'backend' | 'database' | 'cdn' | 'orchestration';
 
@@ -27,7 +28,17 @@ const TABS: { key: Tab; icon: any; ar: string; en: string; catalog: any[] }[] = 
 
 export function HostingStep() {
   const wizard = useWizard();
-  const [tab, setTab] = useState<Tab>('frontend');
+  const frontend = wizard.data.stack.frontend;
+  const backend = wizard.data.stack.backend;
+
+  // Smart default tab: skip tabs that have no relevant options
+  const hasFrontend = frontend !== '' && frontend !== 'none'
+    && !MOBILE_FRONTENDS.includes(frontend as any)
+    && !DESKTOP_FRONTENDS.includes(frontend as any);
+  const hasBackend = backend !== '' && backend !== 'none';
+
+  const defaultTab: Tab = hasFrontend ? 'frontend' : hasBackend ? 'backend' : 'database';
+  const [tab, setTab] = useState<Tab>(defaultTab);
   const h = wizard.data.stack.hosting;
 
   const current = h[tab] as any;

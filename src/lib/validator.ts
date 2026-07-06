@@ -73,6 +73,16 @@ export function validateSkill(data: ProjectData): ValidationIssue[] {
     });
   }
 
+  // Frontend hosting must be "none" if we have no frontend
+  if ((r.frontend === 'none' || r.frontend === '') && r.frontendHosting !== 'none') {
+    issues.push({
+      severity: 'error',
+      category: 'hosting',
+      message: 'Frontend hosting selected but there is no frontend',
+      fix: 'none',
+    });
+  }
+
   // Backend hosting must not be "none" if we have a backend (that's a real server)
   if (r.backend !== 'none' && r.backend !== '' && (r.backendHosting === 'none' || r.backendHosting === '')) {
     issues.push({
@@ -124,6 +134,40 @@ export function validateSkill(data: ProjectData): ValidationIssue[] {
       category: 'thirdParty',
       message: 'File uploads feature enabled but no storage provider',
       fix: 'aws-s3',
+    });
+  }
+
+  // Package manager must match language ecosystem
+  const isNodeLanguage = data.language === 'typescript' || data.language === 'javascript';
+  const backendIsNode = s.backend && ['express', 'fastify', 'nestjs', 'hono', 'koa'].includes(s.backend);
+  const frontendIsNode = s.frontend && !['flutter', 'swiftui', 'jetpack-compose'].includes(s.frontend) && s.frontend !== 'none';
+  const inferredNode = isNodeLanguage || backendIsNode || frontendIsNode;
+  
+  if (!inferredNode && data.language !== '') {
+    const nodePMs = ['npm', 'pnpm', 'yarn', 'bun'];
+    if (nodePMs.includes(s.devops.packageManager)) {
+      let def = 'uv';
+      if (data.language === 'go') def = 'go-modules';
+      else if (data.language === 'rust') def = 'cargo';
+      else if (data.language === 'java') def = 'maven';
+      else if (data.language === 'ruby') def = 'bundler';
+      else if (data.language === 'php') def = 'composer';
+      issues.push({
+        severity: 'error',
+        category: 'devops',
+        message: `${data.language} stack requires a language-specific package manager, not ${s.devops.packageManager}`,
+        fix: def,
+      });
+    }
+  }
+
+  // No frontend means no frontend deployment
+  if ((r.frontend === 'none' || r.frontend === '') && (s.devops.cd === 'vercel-deploy' || s.devops.cd === 'netlify-deploy')) {
+    issues.push({
+      severity: 'error',
+      category: 'devops',
+      message: 'Vercel/Netlify deploy selected but there is no frontend',
+      fix: 'none',
     });
   }
 
@@ -209,6 +253,13 @@ function applyFix(data: ProjectData, category: string, value: string) {
       break;
     case 'monitoring':
       s.thirdParty.monitoring = value as any;
+      break;
+    case 'devops':
+      if (value === 'none') {
+        s.devops.cd = value as any;
+      } else {
+        s.devops.packageManager = value as any;
+      }
       break;
   }
 }

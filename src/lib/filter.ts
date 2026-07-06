@@ -314,18 +314,22 @@ export function filterBackendHostings(
           exclude(excluded, h.id, 'Only Hono works on Cloudflare Workers');
         }
       }
-    } else {
-      // Hono → default to workers
-      exclude(excluded, 'cloudflare-workers', 'Use this for Hono');
+    }
+    // Vercel/Netlify functions only work with Node.js backends
+    const nonNodeBackends: BackendId[] = ['django', 'fastapi', 'flask', 'gin', 'echo', 'fiber', 'actix', 'axum', 'spring-boot', 'rails', 'laravel', 'symfony', 'phoenix', 'aspnet'];
+    if (nonNodeBackends.includes(backend as BackendId)) {
+      for (const h of all) {
+        if (h.id === 'vercel-functions' || h.id === 'netlify-functions') {
+          exclude(excluded, h.id, `${backend} is not a Node.js framework — use a container or VM host`);
+        }
+      }
     }
   }
   const filtered = all.filter((e) => !excluded[e.id]);
   let def: BackendHostingId = 'none';
   if (backend === 'hono') def = 'cloudflare-workers';
   else if (backend !== 'none' && backend !== '') {
-    if (language === 'python') def = 'railway';
-    else if (language === 'typescript' || language === 'javascript') def = 'railway';
-    else def = 'railway';
+    def = 'railway';
   }
   return { catalog: filtered, pinnedDefault: def, excluded };
 }
