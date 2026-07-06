@@ -966,7 +966,7 @@ ${(() => {
     return `1. \`typecheck\` — \`${pkg} ${r.scripts.typecheck}\`
 2. \`lint\` — \`${pkg} ${r.scripts.lint}\`
 3. \`test\` — \`${pkg} test\`
-4. \`build\` — \`${pkg} build\` (electron-builder packages .exe / .dmg / .AppImage)
+4. \`build\` — \`${pkg} build\` (${r.frontend?.id === 'tauri' ? 'Tauri builds' : 'electron-builder packages'} .exe / .dmg / .AppImage)
 5. \`release\` — upload artifacts to GitLab Releases / GitHub Releases (no web preview — desktop app is distributed as installer)`;
   }
   return `1. \`typecheck\` — \`${pkg} ${r.scripts.typecheck}\`
@@ -1462,7 +1462,7 @@ function generateDoD(r: Resolved, _data: ProjectData): string {
     '- [ ] Auth uses httpOnly cookies, passwords hashed',
     '- [ ] All timestamps are UTC',
     '- [ ] README explains setup, scripts, and architecture',
-    '- [ ] Preview deployment works on every PR',
+    ...(r.projectType?.id === 'web-app' ? ['- [ ] Preview deployment works on every PR'] : [])
   );
   if (r.thirdParty.payments && r.thirdParty.payments.id !== 'none') {
     items.push('- [ ] Payment flows (success + failure + webhook) covered by E2E tests');
@@ -1475,3 +1475,4 @@ function placeholderData(_r: Resolved): ProjectData {
   // This function is deprecated — pass real `data` to buildFileLayout instead.
   return {} as ProjectData;
 }
+
