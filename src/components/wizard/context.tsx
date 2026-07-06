@@ -13,10 +13,9 @@ import { autoFix } from '@/lib/compatibility';
 // (User requested: no saved state, no buttons, field starts blank.)
 
 const STEP_IDS: WizardStepId[] = [
-  'welcome', 'project-type', 'identity', 'features', 'language',
-  'frontend', 'backend', 'database', 'hosting', 'auth', 'design',
-  'i18n', 'third-party', 'testing', 'devops', 'professional',
-  'additional', 'generate',
+  'welcome', 'project-type', 'identity', 'features', 'professional',
+  'language', 'frontend', 'backend', 'database', 'hosting', 'auth', 'design',
+  'i18n', 'third-party', 'testing', 'devops', 'additional', 'generate',
 ];
 
 function defaultData(): ProjectData {

@@ -318,7 +318,7 @@ export interface ProjectData {
 
 export type UiLocale = 'ar' | 'en';
 export type WizardStepId =
-  | 'welcome' | 'project-type' | 'identity' | 'features'
+  | 'welcome' | 'project-type' | 'identity' | 'features' | 'professional'
   | 'language' | 'frontend' | 'backend' | 'database'
   | 'hosting' | 'auth' | 'design' | 'i18n' | 'third-party'
-  | 'testing' | 'devops' | 'professional' | 'additional' | 'generate';
+  | 'testing' | 'devops' | 'additional' | 'generate';

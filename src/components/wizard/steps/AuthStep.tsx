@@ -17,6 +17,8 @@ export function AuthStep() {
     authProviders as any,
     wizard.data.stack.frontend,
     wizard.data.stack.database.primary as any,
+    wizard.data.professionalRequirements.userAccounts,
+    wizard.data.professionalRequirements.adminPanel,
   );
 
   return (

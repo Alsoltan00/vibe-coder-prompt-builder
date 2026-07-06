@@ -248,7 +248,7 @@ const RULES: Rule[] = [
     check: (d) =>
       d.language === '' || d.language === 'swift'
         ? null
-        : { field: 'language', fix: 'swift' },
+        : { field: 'stack.frontend', fix: 'none' },
     message: () => 'SwiftUI requires Swift.',
   },
   {
@@ -257,7 +257,7 @@ const RULES: Rule[] = [
     check: (d) =>
       d.language === '' || d.language === 'kotlin'
         ? null
-        : { field: 'language', fix: 'kotlin' },
+        : { field: 'stack.frontend', fix: 'none' },
     message: () => 'Jetpack Compose requires Kotlin.',
   },
   {
@@ -266,7 +266,7 @@ const RULES: Rule[] = [
     check: (d) =>
       d.language === '' || d.language === 'dart'
         ? null
-        : { field: 'language', fix: 'dart' },
+        : { field: 'stack.frontend', fix: 'none' },
     message: () => 'Flutter requires Dart.',
   },
   {
@@ -275,7 +275,7 @@ const RULES: Rule[] = [
     check: (d) => {
       const allowed = FRONTEND_LANGUAGES[d.stack.frontend as FrontendId] || [];
       return d.language !== '' && !allowed.includes(d.language)
-        ? { field: 'language', fix: 'typescript' }
+        ? { field: 'stack.frontend', fix: 'none' }
         : null;
     },
     message: () => 'Web frontend requires TypeScript or JavaScript.',
@@ -291,7 +291,7 @@ const RULES: Rule[] = [
       const required = BACKEND_LANGUAGE[d.stack.backend as BackendId];
       if (!required) return null;
       return d.language !== '' && d.language !== required
-        ? { field: 'language', fix: required }
+        ? { field: 'stack.backend', fix: 'none' }
         : null;
     },
     message: (d) => {

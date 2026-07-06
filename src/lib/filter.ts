@@ -357,8 +357,19 @@ export function filterAuthProviders(
   all: CatalogEntry<AuthProviderId>[],
   frontend: FrontendId | '',
   primaryDb: DatabasePrimaryId | '',
+  userAccountsRequired: boolean,
+  adminPanelRequired: boolean,
 ): FilterResult<AuthProviderId> {
   const excluded: Record<string, string> = {};
+  
+  if (userAccountsRequired || adminPanelRequired) {
+    for (const a of all) {
+      if (a.id === 'none') {
+        exclude(excluded, a.id, 'User accounts and Admin panel require authentication');
+      }
+    }
+  }
+
   // Supabase auth only with supabase-db
   if (primaryDb !== 'supabase-db' && primaryDb !== 'none') {
     for (const a of all) {
@@ -377,9 +388,10 @@ export function filterAuthProviders(
   }
   const filtered = all.filter((e) => !excluded[e.id]);
   let def: AuthProviderId = 'none';
+  if (userAccountsRequired || adminPanelRequired) def = 'clerk';
   if (primaryDb === 'supabase-db') def = 'supabase-auth';
   else if (frontend === 'nextjs') def = 'nextauth';
-  else def = 'clerk';
+  else if (!excluded['clerk']) def = 'clerk';
   return { catalog: filtered, pinnedDefault: def, excluded };
 }
 

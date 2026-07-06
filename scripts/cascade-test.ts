@@ -196,7 +196,7 @@ test('filterBackends with Python language excludes Node backends', () => {
 });
 
 test('filterAuthProviders with Supabase DB prefers supabase-auth', () => {
-  const result = filterAuthProviders(authProviders as any, 'nextjs', 'supabase-db');
+  const result = filterAuthProviders(authProviders as any, 'nextjs', 'supabase-db', false, false);
   assert(result.pinnedDefault === 'supabase-auth', `Should default to supabase-auth, got ${result.pinnedDefault}`);
 });
 
