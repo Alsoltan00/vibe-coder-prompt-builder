@@ -12,9 +12,10 @@
 import type {
   ProjectData, ProjectTypeId, FrontendId, BackendId,
   DatabasePrimaryId, FrontendHostingId, BackendHostingId,
-  DatabaseHostingId, AuthProviderId, UnitTestId, E2eTestId, PackageManagerId,
+  DatabaseHostingId, AuthProviderId, UnitTestId, E2eTestId, ComponentTestId, PackageManagerId,
   PaymentId, StorageId, AnalyticsId, MonitoringId, LanguageId,
-  VectorId, TimeSeriesId, SearchId,
+  VectorId, TimeSeriesId, SearchId, CiId, CdId, IacId, MonorepoId,
+  CssFrameworkId, ComponentLibraryId, IconSetId, FontFamilyId,
 } from '../types';
 import type { CatalogEntry } from './catalog/types';
 import {
@@ -560,3 +561,95 @@ export function filterPackageManagers(
   else if (language === 'php') def = 'composer';
   return { catalog: filtered, pinnedDefault: def, excluded };
 }
+
+/** COMPONENT TEST — requires frontend */
+export function filterComponentTests(
+  all: CatalogEntry<ComponentTestId>[],
+  frontend: FrontendId | '',
+): FilterResult<ComponentTestId> {
+  const excluded: Record<string, string> = {};
+  if (frontend === 'none' || frontend === '') {
+    for (const c of all) {
+      if (c.id !== 'none') {
+        exclude(excluded, c.id, 'Component testing requires a frontend');
+      }
+    }
+  }
+  return { catalog: all.filter((e) => !excluded[e.id]), pinnedDefault: 'none', excluded };
+}
+
+/** UNIT TEST — language specific */
+export function filterUnitTests(
+  all: CatalogEntry<UnitTestId>[],
+  language: LanguageId | '',
+): FilterResult<UnitTestId> {
+  const excluded: Record<string, string> = {};
+  let def: UnitTestId = 'vitest';
+  
+  if (language && language !== 'typescript' && language !== 'javascript') {
+    for (const u of all) {
+      if (['vitest', 'jest', 'mocha'].includes(u.id)) {
+        exclude(excluded, u.id, 'Node.js testing frameworks are for JS/TS only');
+      }
+    }
+    if (language === 'python') def = 'pytest';
+    else if (language === 'go') def = 'go-test';
+    else if (language === 'rust') def = 'cargo-test';
+    else if (language === 'ruby') def = 'rspec';
+    else if (language === 'php') def = 'phpunit';
+    else if (language === 'java') def = 'junit';
+    else def = 'none';
+  }
+  
+  // Specific exclusions for other languages
+  for (const u of all) {
+    if (u.id === 'pytest' && language !== 'python' && language !== '') exclude(excluded, u.id, 'pytest is for Python');
+    if (u.id === 'go-test' && language !== 'go' && language !== '') exclude(excluded, u.id, 'go-test is for Go');
+    if (u.id === 'cargo-test' && language !== 'rust' && language !== '') exclude(excluded, u.id, 'cargo-test is for Rust');
+    if (u.id === 'rspec' && language !== 'ruby' && language !== '') exclude(excluded, u.id, 'rspec is for Ruby');
+    if (u.id === 'phpunit' && language !== 'php' && language !== '') exclude(excluded, u.id, 'phpunit is for PHP');
+    if (u.id === 'junit' && language !== 'java' && language !== '') exclude(excluded, u.id, 'junit is for Java');
+  }
+
+  return { catalog: all.filter((e) => !excluded[e.id]), pinnedDefault: def, excluded };
+}
+
+/** MONOREPO — JS tools for JS */
+export function filterMonorepos(
+  all: CatalogEntry<MonorepoId>[],
+  language: LanguageId | '',
+  frontend: FrontendId | '',
+  backend: BackendId | '',
+): FilterResult<MonorepoId> {
+  const excluded: Record<string, string> = {};
+  const isNodeLanguage = language === 'typescript' || language === 'javascript';
+  const backendIsNode = backend && NODE_BACKENDS.includes(backend as BackendId);
+  const frontendIsNode = frontend && (FRONTEND_LANGUAGES[frontend as FrontendId] as string[] | undefined)?.some((l) => l === 'typescript' || l === 'javascript');
+  const inferredNode = isNodeLanguage || backendIsNode || frontendIsNode;
+
+  if (!inferredNode && language !== '') {
+    for (const m of all) {
+      if (['turborepo', 'nx', 'rush', 'pnpm-workspaces', 'yarn-workspaces', 'lerna'].includes(m.id)) {
+        exclude(excluded, m.id, 'JavaScript monorepo tools require a JS/TS ecosystem');
+      }
+    }
+  }
+
+  return { catalog: all.filter((e) => !excluded[e.id]), pinnedDefault: 'none', excluded };
+}
+
+/** DESIGN — requires frontend */
+export function filterDesignOptions<T extends string>(
+  all: CatalogEntry<T>[],
+  frontend: FrontendId | '',
+): FilterResult<T> {
+  const excluded: Record<string, string> = {};
+  if (frontend === 'none' || frontend === '') {
+    for (const c of all) {
+      if (c.id !== 'none') {
+        exclude(excluded, c.id, 'Design options require a frontend');
+      }
+    }
+  }
+  return { catalog: all.filter((e) => !excluded[e.id]), pinnedDefault: 'none' as T, excluded };
+}

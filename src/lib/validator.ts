@@ -171,6 +171,42 @@ export function validateSkill(data: ProjectData): ValidationIssue[] {
     });
   }
 
+  // Design options require a frontend
+  if ((r.frontend === 'none' || r.frontend === '') && (s.design.cssFramework !== 'none' || s.design.componentLibrary !== 'none' || s.design.iconSet !== 'none' || s.design.fontFamily !== 'system-default')) {
+    issues.push({ severity: 'error', category: 'design', message: 'Design options selected but there is no frontend', fix: 'none' });
+  }
+
+  // Component testing requires a frontend
+  if ((r.frontend === 'none' || r.frontend === '') && s.testing.component !== 'none') {
+    issues.push({ severity: 'error', category: 'testing.component', message: 'Component testing requires a frontend', fix: 'none' });
+  }
+
+  // Unit test ecosystem match
+  if (s.testing.unit !== 'none' && data.language !== '') {
+    if (!inferredNode && ['vitest', 'jest', 'mocha'].includes(s.testing.unit)) {
+      let def = 'none';
+      if (data.language === 'python') def = 'pytest';
+      else if (data.language === 'go') def = 'go-test';
+      else if (data.language === 'rust') def = 'cargo-test';
+      else if (data.language === 'ruby') def = 'rspec';
+      else if (data.language === 'php') def = 'phpunit';
+      else if (data.language === 'java') def = 'junit';
+      issues.push({ severity: 'error', category: 'testing.unit', message: `Node.js testing frameworks are for JS/TS only, not ${data.language}`, fix: def });
+    }
+    
+    if (s.testing.unit === 'pytest' && data.language !== 'python') issues.push({ severity: 'error', category: 'testing.unit', message: 'pytest is for Python', fix: inferredNode ? 'vitest' : 'none' });
+    if (s.testing.unit === 'go-test' && data.language !== 'go') issues.push({ severity: 'error', category: 'testing.unit', message: 'go-test is for Go', fix: inferredNode ? 'vitest' : 'none' });
+    if (s.testing.unit === 'cargo-test' && data.language !== 'rust') issues.push({ severity: 'error', category: 'testing.unit', message: 'cargo-test is for Rust', fix: inferredNode ? 'vitest' : 'none' });
+    if (s.testing.unit === 'rspec' && data.language !== 'ruby') issues.push({ severity: 'error', category: 'testing.unit', message: 'rspec is for Ruby', fix: inferredNode ? 'vitest' : 'none' });
+    if (s.testing.unit === 'phpunit' && data.language !== 'php') issues.push({ severity: 'error', category: 'testing.unit', message: 'phpunit is for PHP', fix: inferredNode ? 'vitest' : 'none' });
+    if (s.testing.unit === 'junit' && data.language !== 'java') issues.push({ severity: 'error', category: 'testing.unit', message: 'junit is for Java', fix: inferredNode ? 'vitest' : 'none' });
+  }
+
+  // Monorepo ecosystem match
+  if (!inferredNode && data.language !== '' && ['turborepo', 'nx', 'rush', 'pnpm-workspaces', 'yarn-workspaces', 'lerna'].includes(s.devops.monorepo)) {
+    issues.push({ severity: 'error', category: 'devops.monorepo', message: `JavaScript monorepo tools require a JS/TS ecosystem`, fix: 'none' });
+  }
+
   // ----- WARNINGS -----
   // No E2E + payments/auth → risky
   if ((r.e2e === 'none' || !r.e2e) && (r.payments || data.professionalRequirements.userAccounts)) {
@@ -260,6 +296,21 @@ function applyFix(data: ProjectData, category: string, value: string) {
       } else {
         s.devops.packageManager = value as any;
       }
+      break;
+    case 'devops.monorepo':
+      s.devops.monorepo = value as any;
+      break;
+    case 'testing.component':
+      s.testing.component = value as any;
+      break;
+    case 'testing.unit':
+      s.testing.unit = value as any;
+      break;
+    case 'design':
+      s.design.cssFramework = value as any;
+      s.design.componentLibrary = value as any;
+      s.design.iconSet = value as any;
+      s.design.fontFamily = value as any;
       break;
   }
 }

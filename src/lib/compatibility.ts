@@ -567,14 +567,81 @@ const RULES: Rule[] = [
     message: () => 'Payments require E2E testing.',
   },
 
-  // NOTE: project-name-required was removed — it blocked the Next button
-// even on early steps (e.g. Project Type) where the user hasn't reached
-// Identity yet. The Identity step already has a required marker (*) on
-// the field and the Generate step will surface an error if it's missing.
-
-// ===================================================================
-  // 16. (reserved)
   // ===================================================================
+  // 16. ZERO-ERROR STRICT RULES (Design, Testing, Monorepo)
+  // ===================================================================
+  {
+    id: 'no-frontend-no-design',
+    appliesTo: (d) => (d.stack.frontend as string) === 'none' || d.stack.frontend === '',
+    check: (d) => {
+      if (d.stack.design.cssFramework !== 'none') return { field: 'stack.design.cssFramework', fix: 'none' };
+      if (d.stack.design.componentLibrary !== 'none') return { field: 'stack.design.componentLibrary', fix: 'none' };
+      if (d.stack.design.iconSet !== 'none') return { field: 'stack.design.iconSet', fix: 'none' };
+      if (d.stack.design.fontFamily !== 'system-default') return { field: 'stack.design.fontFamily', fix: 'system-default' };
+      return null;
+    },
+    message: () => 'Design options require a frontend.',
+  },
+  {
+    id: 'no-frontend-no-component-test',
+    appliesTo: (d) => (d.stack.frontend as string) === 'none' || d.stack.frontend === '',
+    check: (d) => d.stack.testing.component !== 'none'
+      ? { field: 'stack.testing.component', fix: 'none' }
+      : null,
+    message: () => 'Component testing requires a frontend.',
+  },
+  {
+    id: 'wrong-unit-test',
+    appliesTo: (d) => d.language !== '',
+    check: (d) => {
+      const u = d.stack.testing.unit;
+      if (u === 'none') return null;
+      
+      const isNodeLanguage = d.language === 'typescript' || d.language === 'javascript';
+      
+      if (!isNodeLanguage && ['vitest', 'jest', 'mocha'].includes(u)) {
+        let def = 'none';
+        if (d.language === 'python') def = 'pytest';
+        else if (d.language === 'go') def = 'go-test';
+        else if (d.language === 'rust') def = 'cargo-test';
+        else if (d.language === 'ruby') def = 'rspec';
+        else if (d.language === 'php') def = 'phpunit';
+        else if (d.language === 'java') def = 'junit';
+        return { field: 'stack.testing.unit', fix: def };
+      }
+      
+      if (u === 'pytest' && d.language !== 'python') return { field: 'stack.testing.unit', fix: isNodeLanguage ? 'vitest' : 'none' };
+      if (u === 'go-test' && d.language !== 'go') return { field: 'stack.testing.unit', fix: isNodeLanguage ? 'vitest' : 'none' };
+      if (u === 'cargo-test' && d.language !== 'rust') return { field: 'stack.testing.unit', fix: isNodeLanguage ? 'vitest' : 'none' };
+      if (u === 'rspec' && d.language !== 'ruby') return { field: 'stack.testing.unit', fix: isNodeLanguage ? 'vitest' : 'none' };
+      if (u === 'phpunit' && d.language !== 'php') return { field: 'stack.testing.unit', fix: isNodeLanguage ? 'vitest' : 'none' };
+      if (u === 'junit' && d.language !== 'java') return { field: 'stack.testing.unit', fix: isNodeLanguage ? 'vitest' : 'none' };
+      
+      return null;
+    },
+    message: () => 'Unit testing framework must match the language ecosystem.',
+  },
+  {
+    id: 'wrong-monorepo',
+    appliesTo: (d) => d.language !== '',
+    check: (d) => {
+      const m = d.stack.devops.monorepo;
+      if (m === 'none') return null;
+      
+      const isNodeLanguage = d.language === 'typescript' || d.language === 'javascript';
+      const backendIsNode = d.stack.backend && NODE_BACKENDS.includes(d.stack.backend as BackendId);
+      const frontendIsNode = d.stack.frontend && (FRONTEND_LANGUAGES[d.stack.frontend as FrontendId] as string[] | undefined)?.some(
+        (l: string) => l === 'typescript' || l === 'javascript'
+      );
+      const inferredNode = isNodeLanguage || backendIsNode || frontendIsNode;
+      
+      if (!inferredNode && ['turborepo', 'nx', 'rush', 'pnpm-workspaces', 'yarn-workspaces', 'lerna'].includes(m)) {
+        return { field: 'stack.devops.monorepo', fix: 'none' };
+      }
+      return null;
+    },
+    message: () => 'JavaScript monorepo tools require a JS/TS ecosystem.',
+  },
 ];
 
 // =====================================================================

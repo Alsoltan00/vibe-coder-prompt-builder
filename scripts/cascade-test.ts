@@ -15,11 +15,14 @@ import {
   filterStorageProviders,
   filterPackageManagers,
   filterBackendHostings,
+  filterMonorepos,
+  filterUnitTests,
+  filterDesignOptions,
 } from '../src/lib/filter';
 import {
   frontends, backends, languages, primaryDatabases,
   authProviders, e2eTestTools, paymentProviders, storageProviders,
-  packageManagers, backendHostingCatalog,
+  packageManagers, backendHostingCatalog, monorepoTools, unitTestTools, cssFrameworks
 } from '../src/lib/catalog';
 
 let passed = 0;
@@ -161,6 +164,55 @@ test('Payments on but no provider → auto-fix to stripe', () => {
   assert(fixed.stack.thirdParty.payments === 'stripe', `Should fix to stripe, got ${fixed.stack.thirdParty.payments}`);
 });
 
+test('No frontend implies no design or component test', () => {
+  const data: any = {
+    identity: { name: 'X', description: '', targetAudience: '', projectType: 'api-backend' },
+    language: 'python',
+    coreFeatures: [],
+    stack: {
+      frontend: 'none', backend: 'django',
+      database: { primary: 'postgresql', cache: 'none', vector: 'none', search: 'none', analytics: 'none', graph: 'none', timeseries: 'none' },
+      hosting: { frontend: 'none', backend: 'railway', database: 'neon', cdn: 'none', orchestration: 'none' },
+      auth: { primary: 'none', socialProviders: [], enterpriseSso: false, mfaRequired: false },
+      design: { cssFramework: 'tailwind', componentLibrary: 'shadcn-ui', iconSet: 'lucide', fontFamily: 'inter', designTokens: false },
+      i18n: { enabled: false, defaultLocale: 'en', supportedLocales: ['en'], rtlSupport: false, translationSource: 'local-json' },
+      thirdParty: { payments: 'none', email: 'none', sms: 'none', analytics: 'none', monitoring: 'none', storage: 'none', search: 'none', featureFlags: 'none' },
+      testing: { unit: 'pytest', component: 'react-testing-library', e2e: 'none', api: 'none', visualRegression: false, loadTesting: false, securityScanning: false, coverageTarget: 80 },
+      devops: { ci: 'github-actions', cd: 'none', iac: 'none', packageManager: 'uv', monorepo: 'none' },
+    },
+    professionalRequirements: { userAccounts: false, sensitiveData: false, adminPanel: false, mobileResponsive: false, realTimeFeatures: false, fileUploads: false, payments: false, searchFeature: false, analytics: false, multiLanguage: false },
+    additionalRequirements: [],
+  };
+  const fixed = autoFix(data);
+  assert(fixed.stack.design.cssFramework === 'none', `Design should be none, got ${fixed.stack.design.cssFramework}`);
+  assert(fixed.stack.design.componentLibrary === 'none', `Component library should be none, got ${fixed.stack.design.componentLibrary}`);
+  assert(fixed.stack.testing.component === 'none', `Component test should be none, got ${fixed.stack.testing.component}`);
+});
+
+test('Python backend enforces proper testing and monorepo', () => {
+  const data: any = {
+    identity: { name: 'X', description: '', targetAudience: '', projectType: 'api-backend' },
+    language: 'python',
+    coreFeatures: [],
+    stack: {
+      frontend: 'none', backend: 'django',
+      database: { primary: 'postgresql', cache: 'none', vector: 'none', search: 'none', analytics: 'none', graph: 'none', timeseries: 'none' },
+      hosting: { frontend: 'none', backend: 'railway', database: 'neon', cdn: 'none', orchestration: 'none' },
+      auth: { primary: 'none', socialProviders: [], enterpriseSso: false, mfaRequired: false },
+      design: { cssFramework: 'none', componentLibrary: 'none', iconSet: 'none', fontFamily: 'none', designTokens: false },
+      i18n: { enabled: false, defaultLocale: 'en', supportedLocales: ['en'], rtlSupport: false, translationSource: 'local-json' },
+      thirdParty: { payments: 'none', email: 'none', sms: 'none', analytics: 'none', monitoring: 'none', storage: 'none', search: 'none', featureFlags: 'none' },
+      testing: { unit: 'vitest', component: 'none', e2e: 'none', api: 'none', visualRegression: false, loadTesting: false, securityScanning: false, coverageTarget: 80 },
+      devops: { ci: 'github-actions', cd: 'none', iac: 'none', packageManager: 'uv', monorepo: 'turborepo' },
+    },
+    professionalRequirements: { userAccounts: false, sensitiveData: false, adminPanel: false, mobileResponsive: false, realTimeFeatures: false, fileUploads: false, payments: false, searchFeature: false, analytics: false, multiLanguage: false },
+    additionalRequirements: [],
+  };
+  const fixed = autoFix(data);
+  assert(fixed.stack.testing.unit === 'pytest', `Unit test should snap to pytest, got ${fixed.stack.testing.unit}`);
+  assert(fixed.stack.devops.monorepo === 'none', `Monorepo should snap to none, got ${fixed.stack.devops.monorepo}`);
+});
+
 console.log('\n── Filter functions ──');
 
 test('filterLanguages with Express frontend shows only JS/TS languages', () => {
@@ -239,6 +291,24 @@ test('filterPrimaryDatabases hides non-Supabase when Supabase auth selected', ()
   const result = filterPrimaryDatabases(primaryDatabases as any, 'supabase-auth');
   assert(!!result.excluded['postgresql'], 'Postgres should be excluded (Supabase auth wants Supabase DB)');
   assert(!result.excluded['supabase-db'], 'Supabase DB should be allowed');
+});
+
+test('filterMonorepos for purely Python stack excludes turborepo', () => {
+  const result = filterMonorepos(monorepoTools as any, 'python', 'none', 'django');
+  assert(!!result.excluded['turborepo'], 'turborepo should be excluded');
+  assert(!result.excluded['none'], 'none should be allowed');
+});
+
+test('filterUnitTests for Python excludes vitest and defaults to pytest', () => {
+  const result = filterUnitTests(unitTestTools as any, 'python');
+  assert(!!result.excluded['vitest'], 'vitest should be excluded');
+  assert(!result.excluded['pytest'], 'pytest should be allowed');
+  assert(result.pinnedDefault === 'pytest', 'pinnedDefault should be pytest');
+});
+
+test('filterDesignOptions excludes Tailwind if frontend is none', () => {
+  const result = filterDesignOptions(cssFrameworks as any, 'none');
+  assert(!!result.excluded['tailwind'], 'tailwind should be excluded');
 });
 
 console.log('\n── Summary ──');

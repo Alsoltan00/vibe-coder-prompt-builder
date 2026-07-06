@@ -5,13 +5,17 @@ import { useWizard } from '@/components/wizard/context';
 import { StepHeader } from './ProjectTypeStep';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { filterE2eTests } from '@/lib/filter';
+import { filterE2eTests, filterUnitTests, filterComponentTests } from '@/lib/filter';
 
 export function TestingStep() {
   const wizard = useWizard();
   const t = wizard.data.stack.testing;
   const prof = wizard.data.professionalRequirements;
+  const language = wizard.data.language;
+  const frontend = wizard.data.stack.frontend;
 
+  const unitFilter = filterUnitTests(unitTestTools as any, language);
+  const compFilter = filterComponentTests(componentTestTools as any, frontend);
   const e2eFilter = filterE2eTests(e2eTestTools as any, prof.payments, prof.userAccounts);
 
   return (
@@ -22,15 +26,17 @@ export function TestingStep() {
       />
       <Sub
         title={wizard.locale === 'ar' ? 'اختبار الوحدات' : 'Unit testing'}
-        catalog={unitTestTools}
+        catalog={unitFilter.catalog}
         value={t.unit}
         onChange={(v) => wizard.setStack('testing', { ...t, unit: v as any })}
+        excluded={unitFilter.excluded}
       />
       <Sub
         title={wizard.locale === 'ar' ? 'اختبار المكونات' : 'Component testing'}
-        catalog={componentTestTools}
+        catalog={compFilter.catalog}
         value={t.component}
         onChange={(v) => wizard.setStack('testing', { ...t, component: v as any })}
+        excluded={compFilter.excluded}
       />
       <Sub
         title={wizard.locale === 'ar' ? 'الاختبار الشامل (E2E)' : 'E2E testing'}
