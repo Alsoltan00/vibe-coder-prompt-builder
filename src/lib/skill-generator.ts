@@ -698,22 +698,14 @@ function buildPackageJsonSnippet(r: Resolved): string {
 
   if (r.language?.id === 'typescript') {
     lines.push(`  "typescript": "^5.6.0",`);
-    if (r.frontend?.id !== 'nextjs' && (r.backend && r.backend.id !== 'none')) {
+    // @t3-oss/env: nextjs uses @t3-oss/env-nextjs (added above), all others use env-core
+    if (r.frontend?.id !== 'nextjs') {
       lines.push(`  "@t3-oss/env-core": "^0.11.1",`);
     }
   }
-  if (r.design.css?.id === 'tailwind') lines.push(`  "tailwindcss": "^3.4.0",`);
   lines.push(`  "zod": "^3.23.0",`);
-  if (r.testing.unit?.id === 'vitest') lines.push(`  "vitest": "^2.1.0",`);
-  if (r.testing.unit?.id === 'jest' || r.frontend?.id === 'electron') {
-    lines.push(`  "jest": "^29.7.0",`);
-    lines.push(`  "@types/jest": "^29.5.0",`);
-    lines.push(`  "ts-jest": "^29.2.0",`);
-  }
-  if (r.testing.e2e?.id === 'playwright') lines.push(`  "@playwright/test": "^1.47.0",`);
   if (r.thirdParty.payments?.id === 'stripe') lines.push(`  "stripe": "^17.0.0",`);
   if (r.thirdParty.email?.id === 'resend') lines.push(`  "resend": "^4.0.0",`);
-  if (r.thirdParty.monitoring?.id === 'sentry') lines.push(`  "@sentry/node": "^8.0.0",`);
 
   lines.push(`  },`);
   lines.push(`  "devDependencies": {`);
@@ -721,6 +713,7 @@ function buildPackageJsonSnippet(r: Resolved): string {
     lines.push(`    "typescript": "^5.6.0",`);
     lines.push(`    "@types/node": "^22.0.0",`);
   }
+  if (r.design.css?.id === 'tailwind') lines.push(`    "tailwindcss": "^3.4.0",`);
   if (r.testing.unit?.id === 'vitest') lines.push(`    "vitest": "^2.1.0",`);
   if (r.testing.unit?.id === 'jest' || r.frontend?.id === 'electron') {
     lines.push(`    "jest": "^29.7.0",`);
@@ -808,8 +801,8 @@ Monitoring        : ${r.thirdParty.monitoring && r.thirdParty.monitoring.id !== 
 Analytics         : ${r.thirdParty.analytics && r.thirdParty.analytics.id !== 'none' ? r.thirdParty.analytics.name : '—'}
 Payments          : ${r.thirdParty.payments && r.thirdParty.payments.id !== 'none' ? r.thirdParty.payments.name : '—'}
 Storage           : ${r.thirdParty.storage && r.thirdParty.storage.id !== 'none' ? r.thirdParty.storage.name : '—'}
-Testing           : ${r.testing.unit?.name}, ${r.testing.e2e && r.testing.e2e.id !== 'none' ? r.testing.e2e.name : '—'}, ${r.testing.api?.name}
-CI/CD             : ${r.devops.ci?.name} + ${r.devops.cd?.name}
+Testing           : ${r.testing.unit?.name ?? '—'}, ${r.testing.e2e && r.testing.e2e.id !== 'none' ? r.testing.e2e.name : '—'}, ${r.testing.api && r.testing.api.id !== 'none' ? r.testing.api.name : 'No API Tests'}
+CI/CD             : ${r.devops.ci?.name ?? '—'}${r.devops.cd && r.devops.cd.id !== 'none' ? ` + ${r.devops.cd.name}` : ''}
 Package manager   : ${r.devops.pkg?.name}
 \`\`\`
 
@@ -959,7 +952,7 @@ ${(() => {
 | Password hashing | bcrypt rounds=12 / argon2id |
 | Rate limiting | 100 req/min/IP, 1000 req/hour/user |
 | Input validation | ${this.validatorChoice(r)} at the API boundary |
-| Env Variables | Strict type-checking at build time via t3-env / Zod |
+| Env Variables | ${(['python', 'go', 'rust'].includes(r.language?.id ?? '')) ? 'Strict validation at startup via pydantic-settings / env struct / dotenv' : 'Strict type-checking at build time via t3-env / Zod'} |
 | CSRF | double-submit cookie pattern |
 | Security headers | CSP, X-Frame-Options=DENY, Referrer-Policy=strict-origin-when-cross-origin |
 | Secrets | ${r.hosting.frontend?.name ?? 'platform'} env vars + ${r.devops.iac && r.devops.iac.id !== 'none' ? r.devops.iac.name : 'AWS KMS / GCP Secret Manager'} for prod |
@@ -1268,7 +1261,7 @@ ${(() => {
 - Never store secrets in code or committed .env files.
 - Never use \`localStorage\` for JWT or any auth token.
 - Never commit console.log for debugging — use a structured logger.
-- Never use \`document.querySelector\` in React/Vue code.
+${['vue', 'nuxt'].includes(r.frontend?.id ?? '') ? '- Never use `document.querySelector` in Vue component code — use template refs.' : ['react', 'nextjs', 'remix', 'preact', 'solid'].includes(r.frontend?.id ?? '') ? '- Never use `document.querySelector` in React code — use refs.' : ['svelte', 'sveltekit'].includes(r.frontend?.id ?? '') ? '- Never use `document.querySelector` in Svelte code — use bind:this.' : '- Never manipulate the DOM directly — use framework primitives.'}
 - Never disable linter rules to silence warnings.
 - Never use float for currency.
 - Never use scripts that don't match the framework choice (e.g., \`next dev\` for a Vite project).
@@ -1318,10 +1311,12 @@ ${(() => {
 - Types       : PascalCase — \`UserProfile\`
 - Tests       : nested \`#[cfg(test)]\` or in \`tests/\` directory`;
   }
-  return `- React components  : PascalCase — Button.tsx
+  const ext = r.frontend?.id === 'vue' || r.frontend?.id === 'nuxt' ? 'vue' : r.frontend?.id === 'svelte' || r.frontend?.id === 'sveltekit' ? 'svelte' : r.frontend?.id === 'astro' ? 'astro' : 'tsx';
+  const fwName = r.frontend?.id === 'vue' || r.frontend?.id === 'nuxt' ? 'Vue' : r.frontend?.id === 'svelte' || r.frontend?.id === 'sveltekit' ? 'Svelte' : r.frontend?.id === 'angular' ? 'Angular' : 'React';
+  return `- ${fwName} components  : PascalCase — Button.${ext}
 - Utilities        : camelCase — formatDate.ts
 - Route handlers   : kebab-case — user-profile/route.ts
-- Tests            : *.test.tsx or *.spec.ts`;
+- Tests            : *.test.${ext === 'tsx' ? 'tsx' : 'ts'} or *.spec.ts`;
 })()}
 `;
   }
@@ -1510,8 +1505,9 @@ CREATE TABLE users (
     if (r.frontend?.id === 'none' || !r.frontend?.id || (r.frontend as any) === '') {
       return `This project uses server-rendered templates (or no separate UI layer). All HTML lives under /templates/. No JSX or React-style component libraries apply — use Django templates + HTMX/Turbo, or Jinja2 for pure-API projects.`;
     }
-    return `Components live in src/components/. For every shared component:
-- Storybook story (or equivalent) at .stories.tsx
+    const compExt = r.frontend?.id === 'vue' || r.frontend?.id === 'nuxt' ? 'vue' : r.frontend?.id === 'svelte' || r.frontend?.id === 'sveltekit' ? 'svelte' : 'tsx';
+    return `Components live in ${r.frontend?.id === 'nuxt' ? 'app/components/' : r.frontend?.id === 'sveltekit' ? 'src/lib/components/' : 'src/components/'}. For every shared component:
+- Storybook story (or equivalent) at .stories.${compExt === 'vue' ? 'ts' : compExt}
 - a11y: keyboard navigable, visible focus, ARIA labels
 - Dark mode via CSS variables (no JS theme)
 - Responsive: mobile-first (320 → 1920px)
@@ -1567,8 +1563,8 @@ ${r.design.comp?.id === 'shadcn-ui' ? '- Use shadcn/ui primitives — install vi
 
 - **Language:** ${r.language?.name ?? 'TypeScript'} — **strict mode enabled** (\`"strict": true\`).
 - **Imports:** absolute via path alias \`@/\` → \`./src/\`.
-- **Components:** ${r.frontend?.id === 'vue' || r.frontend?.id === 'nuxt' ? 'Composition API + <script setup>. No Options API.' : 'function components + hooks only. No class components.'}
-- **Naming:** PascalCase files for components (\`Button.tsx\`); camelCase for utilities.
+- **Components:** ${r.frontend?.id === 'vue' || r.frontend?.id === 'nuxt' ? 'Composition API + <script setup>. No Options API.' : r.frontend?.id === 'svelte' || r.frontend?.id === 'sveltekit' ? 'Svelte components with <script lang="ts">. Use stores for state.' : r.frontend?.id === 'angular' ? 'Standalone components with signals. No legacy modules.' : 'function components + hooks only. No class components.'}
+- **Naming:** PascalCase files for components (\`Button.${r.frontend?.id === 'vue' || r.frontend?.id === 'nuxt' ? 'vue' : r.frontend?.id === 'svelte' || r.frontend?.id === 'sveltekit' ? 'svelte' : r.frontend?.id === 'astro' ? 'astro' : r.frontend?.id === 'angular' ? 'component.ts' : 'tsx'}\`); camelCase for utilities.
 - **Comments:** JSDoc on every exported function. Inline ONLY for non-obvious logic.`;
   }
 }
