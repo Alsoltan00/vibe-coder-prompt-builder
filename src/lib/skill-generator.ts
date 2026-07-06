@@ -680,6 +680,7 @@ function buildPackageJsonSnippet(r: Resolved): string {
   if (r.frontend?.id === 'nextjs') {
     lines.push(`  "next": "^15.0.0",`);
     lines.push(`  "react": "^18.3.1", "react-dom": "^18.3.1",`);
+    if (r.language?.id === 'typescript') lines.push(`  "@t3-oss/env-nextjs": "^0.11.1",`);
   } else if (r.frontend?.id === 'remix') {
     lines.push(`  "@remix-run/react": "^2.13.0",`);
   } else if (r.frontend?.id === 'nuxt') {
@@ -697,6 +698,9 @@ function buildPackageJsonSnippet(r: Resolved): string {
 
   if (r.language?.id === 'typescript') {
     lines.push(`  "typescript": "^5.6.0",`);
+    if (r.frontend?.id !== 'nextjs' && (r.backend && r.backend.id !== 'none')) {
+      lines.push(`  "@t3-oss/env-core": "^0.11.1",`);
+    }
   }
   if (r.design.css?.id === 'tailwind') lines.push(`  "tailwindcss": "^3.4.0",`);
   lines.push(`  "zod": "^3.23.0",`);
@@ -854,6 +858,7 @@ ${buildFileLayout(data)}
 | Password hashing | bcrypt rounds=12 / argon2id |
 | Rate limiting | 100 req/min/IP, 1000 req/hour/user |
 | Input validation | ${this.validatorChoice(r)} at the API boundary |
+| Env Variables | Strict type-checking at build time via t3-env / Zod |
 | CSRF | double-submit cookie pattern |
 | Security headers | CSP, X-Frame-Options=DENY, Referrer-Policy=strict-origin-when-cross-origin |
 | Secrets | ${r.hosting.frontend?.name ?? 'platform'} env vars + ${r.devops.iac && r.devops.iac.id !== 'none' ? r.devops.iac.name : 'AWS KMS / GCP Secret Manager'} for prod |
