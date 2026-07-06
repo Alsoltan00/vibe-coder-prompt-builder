@@ -18,7 +18,7 @@ function makeProject(overrides: Partial<any>): ProjectData {
       targetAudience: 'general users',
       description: 'test project',
     },
-    language: 'typescript',
+    language: 'typescript', coreFeatures: [], additionalRequirements: [],
     stack: {
       frontend: 'nextjs',
       backend: 'none',
@@ -38,7 +38,7 @@ function makeProject(overrides: Partial<any>): ProjectData {
         cdn: 'none',
         orchestration: 'none',
       },
-      auth: { primary: 'none', socialProviders: [] },
+      auth: { primary: 'none', socialProviders: [], enterpriseSso: false, mfaRequired: false },
       thirdParty: {
         payments: 'none', email: 'none', sms: 'none',
         analytics: 'none', monitoring: 'none', storage: 'none',
@@ -46,18 +46,18 @@ function makeProject(overrides: Partial<any>): ProjectData {
       },
       design: {
         cssFramework: 'tailwind', componentLibrary: 'none',
-        iconSet: 'none', fontFamily: 'none',
+        iconSet: 'none', fontFamily: 'system-default', designTokens: false,
       },
       i18n: {
-        supportedLocales: ['en'], defaultLocale: 'en',
-        rtlSupport: false, translationSource: 'none',
+        enabled: false, supportedLocales: ['en'], defaultLocale: 'en',
+        rtlSupport: false, translationSource: 'local-json',
       },
       testing: {
         unit: 'vitest', component: 'none', e2e: 'playwright',
-        api: 'none', coverageTarget: 80,
+        api: 'none', coverageTarget: 80, visualRegression: false, loadTesting: false, securityScanning: false,
       },
       devops: {
-        ci: 'github-actions', cd: 'none', iac: 'none',
+        ci: 'github-actions', cd: 'manual-ssh', iac: 'none',
         packageManager: 'pnpm', monorepo: 'none',
       },
     },
@@ -304,4 +304,13 @@ if (failures.length > 0) {
   }
   process.exit(1);
 }
+
+
+
+
+
+
+
+
+
 
