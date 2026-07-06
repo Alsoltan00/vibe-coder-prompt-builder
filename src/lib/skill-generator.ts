@@ -275,7 +275,7 @@ function pickScripts(frontend: string, language: string): ScriptsSet {
     start: 'npm start',
     lint: 'eslint .',
     typecheck: 'tsc --noEmit',
-    test: 'vitest',
+    test: 'test',
   };
   // Node/JS/TS projects use npm-style scripts
   if (['typescript', 'javascript'].includes(language)) {
@@ -285,8 +285,8 @@ function pickScripts(frontend: string, language: string): ScriptsSet {
       start: SCRIPTS_BY_FRONTEND[frontend]?.start || 'vite preview',
       lint: SCRIPTS_BY_FRONTEND[frontend]?.lint || 'eslint .',
       typecheck: 'tsc --noEmit',
-      // Electron uses Jest (bundled via electron-forge); other TS/JS apps use vitest
-      test: frontend === 'electron' ? 'jest' : 'vitest',
+      // Test runner is overridden by resolve() based on user's testing.unit choice
+      test: 'test',
     };
   }
   if (language === 'python') {
@@ -843,6 +843,107 @@ ${buildFileLayout(data)}
 
 ---
 
+${(() => {
+  if (r.frontend?.id === 'tauri') {
+    return `## 2b. Desktop Configuration (Tauri)
+
+\`src-tauri/tauri.conf.json\`:
+\`\`\`json
+{
+  "productName": "${r.name}",
+  "identifier": "com.${r.slug}.app",
+  "build": {
+    "beforeBuildCommand": "${r.devops.pkg?.id ?? 'pnpm'} build",
+    "beforeDevCommand": "${r.devops.pkg?.id ?? 'pnpm'} dev",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'"
+    },
+    "windows": [{ "title": "${r.name}", "width": 1200, "height": 800 }]
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "dmg", "appimage", "deb"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.ico"]
+  }
+}
+\`\`\`
+
+\`src-tauri/src/lib.rs\`:
+\`\`\`rust
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
+        .invoke_handler(tauri::generate_handler![])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+\`\`\`
+
+---
+
+`;
+  }
+  if (r.frontend?.id === 'electron') {
+    return `## 2b. Desktop Configuration (Electron)
+
+\`forge.config.ts\`:
+\`\`\`ts
+import type { ForgeConfig } from '@electron-forge/shared-types';
+const config: ForgeConfig = {
+  packagerConfig: { name: '${r.slug}', icon: './assets/icon' },
+  makers: [
+    { name: '@electron-forge/maker-squirrel', config: {} },
+    { name: '@electron-forge/maker-dmg', config: {} },
+    { name: '@electron-forge/maker-deb', config: {} },
+  ],
+};
+export default config;
+\`\`\`
+
+---
+
+`;
+  }
+  return '';
+})()}
+
+${(() => {
+  if (r.frontend?.id === 'expo' || r.frontend?.id === 'react-native') {
+    return `## 2c. Mobile Configuration (${r.frontend?.name})
+
+\`app.json\`:
+\`\`\`json
+{
+  "expo": {
+    "name": "${r.name}",
+    "slug": "${r.slug}",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "${r.slug}",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": { "bundleIdentifier": "com.${r.slug}.app", "supportsTablet": true },
+    "android": { "package": "com.${r.slug}.app", "adaptiveIcon": { "foregroundImage": "./assets/adaptive-icon.png" } },
+    "plugins": ["expo-router"]
+  }
+}
+\`\`\`
+
+---
+
+`;
+  }
+  return '';
+})()}
+
 ## 3. Coding Conventions${this.generateCodingConventions(r)}
 
 - **Errors:** every async function wraps with \`try/catch\` that logs structured + reports to ${r.thirdParty.monitoring?.name ?? 'error tracker'}.
@@ -863,7 +964,60 @@ ${buildFileLayout(data)}
 | Security headers | CSP, X-Frame-Options=DENY, Referrer-Policy=strict-origin-when-cross-origin |
 | Secrets | ${r.hosting.frontend?.name ?? 'platform'} env vars + ${r.devops.iac && r.devops.iac.id !== 'none' ? r.devops.iac.name : 'AWS KMS / GCP Secret Manager'} for prod |
 ${r.db.primary && r.db.primary.id === 'supabase-db' ? '| RLS | enabled on every table; deny by default |' : ''}
+${(r.frontend?.id === 'tauri' || r.frontend?.id === 'electron') ? `| Trust boundary | Frontend is UNTRUSTED. All sensitive ops go through ${r.frontend?.id === 'tauri' ? 'Tauri Commands (invoke)' : 'IPC (ipcMain/ipcRenderer)'} |
+| Secret storage | Platform-native (${r.frontend?.id === 'tauri' ? 'keyring crate → ' : ''}Windows Credential Manager / macOS Keychain / Linux Secret Service) |
+| IPC security | Whitelist allowed ${r.frontend?.id === 'tauri' ? 'commands in tauri.conf.json capabilities' : 'IPC channels in preload.ts'} |` : ''}
 ${dataNeedsGDPR(data) ? '| GDPR/CCPA | data export, 30-day deletion grace, consent log |\n| Sensitive columns | AES-256-GCM or pgcrypto |' : ''}
+
+---
+
+## 4b. Environment Variables (Type-Safe)
+
+${(() => {
+  const isNext = r.frontend?.id === 'nextjs';
+  const envPkg = isNext ? '@t3-oss/env-nextjs' : '@t3-oss/env-core';
+  const lines = [];
+  lines.push(`Create \`src/env.ts\` with strict Zod validation:\
+\`\`\`ts\
+import { createEnv } from "${envPkg}";\
+import { z } from "zod";\
+\
+export const env = createEnv({\
+  server: {`);
+  if (r.db.primary && r.db.primary.id !== 'none' && r.db.primary.id !== 'sqlite') {
+    lines.push(`    DATABASE_URL: z.string().url(),`);
+  }
+  if (r.auth.primary && r.auth.primary.id !== 'none') {
+    lines.push(`    AUTH_SECRET: z.string().min(32),`);
+  }
+  if (r.thirdParty.payments && r.thirdParty.payments.id !== 'none') {
+    const prefix = r.thirdParty.payments.id === 'stripe' ? 'STRIPE' : r.thirdParty.payments.id === 'lemonsqueezy' ? 'LEMON_SQUEEZY' : 'PAYMENT';
+    lines.push(`    ${prefix}_SECRET_KEY: z.string().min(1),`);
+    lines.push(`    ${prefix}_WEBHOOK_SECRET: z.string().min(1),`);
+  }
+  if (r.thirdParty.monitoring && r.thirdParty.monitoring.id === 'sentry') {
+    lines.push(`    SENTRY_DSN: z.string().url(),`);
+  }
+  if (r.thirdParty.storage && r.thirdParty.storage.id !== 'none') {
+    lines.push(`    S3_BUCKET: z.string().min(1),`);
+    lines.push(`    S3_REGION: z.string().min(1),`);
+  }
+  lines.push(`  },`);
+  if (isNext || r.frontend?.id === 'react' || r.frontend?.id === 'vue' || r.frontend?.id === 'svelte') {
+    const prefix = isNext ? 'NEXT_PUBLIC_' : 'VITE_';
+    lines.push(`  client: {`);
+    lines.push(`    ${prefix}APP_URL: z.string().url(),`);
+    if (r.thirdParty.analytics && r.thirdParty.analytics.id !== 'none') {
+      lines.push(`    ${prefix}ANALYTICS_ID: z.string().min(1),`);
+    }
+    lines.push(`  },`);
+  }
+  lines.push(`});\
+\`\`\`\
+\
+**Rule:** Import \`env\` from this file everywhere. Never use \`process.env\` directly.`);
+  return lines.join('\n');
+})()}
 
 ---
 
