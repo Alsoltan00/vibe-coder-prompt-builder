@@ -1567,7 +1567,7 @@ ${r.design.comp?.id === 'shadcn-ui' ? '- Use shadcn/ui primitives — install vi
 
 - **Language:** ${r.language?.name ?? 'TypeScript'} — **strict mode enabled** (\`"strict": true\`).
 - **Imports:** absolute via path alias \`@/\` → \`./src/\`.
-- **Components:** function components + hooks only. No class components.
+- **Components:** ${r.frontend?.id === 'vue' || r.frontend?.id === 'nuxt' ? 'Composition API + <script setup>. No Options API.' : 'function components + hooks only. No class components.'}
 - **Naming:** PascalCase files for components (\`Button.tsx\`); camelCase for utilities.
 - **Comments:** JSDoc on every exported function. Inline ONLY for non-obvious logic.`;
   }
@@ -1629,4 +1629,5 @@ function placeholderData(_r: Resolved): ProjectData {
   // This function is deprecated — pass real `data` to buildFileLayout instead.
   return {} as ProjectData;
 }
+
 
