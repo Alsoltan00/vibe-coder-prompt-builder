@@ -285,7 +285,8 @@ function pickScripts(frontend: string, language: string): ScriptsSet {
       start: SCRIPTS_BY_FRONTEND[frontend]?.start || 'vite preview',
       lint: SCRIPTS_BY_FRONTEND[frontend]?.lint || 'eslint .',
       typecheck: 'tsc --noEmit',
-      test: 'vitest',
+      // Electron uses Jest (bundled via electron-forge); other TS/JS apps use vitest
+      test: frontend === 'electron' ? 'jest' : 'vitest',
     };
   }
   if (language === 'python') {
@@ -534,7 +535,14 @@ function buildSetupCommands(r: Resolved): string {
   } else if (fr === 'tauri') {
     lines.push(`pnpm create tauri-app@latest ${name} --template react-ts --manager pnpm --identifier com.${name}.app --yes`);
   } else if (fr === 'electron') {
-    lines.push(`pnpm dlx create-electron-app ${name} --template webpack-typescript`);
+    // Electron Forge is the official scaffolder; create-electron-app wraps it
+    lines.push(`npm init electron-app@latest ${name} -- --template=webpack-typescript`);
+    lines.push(`cd ${name}`);
+    lines.push(`# Install pnpm after scaffold (Electron Forge creates npm project by default)`);
+    lines.push(`corepack enable pnpm`);
+    lines.push(`# Convert to pnpm workspaces`);
+    lines.push(`pnpm import`);
+    lines.push(`rm -f package-lock.json`);
   } else if (be === 'django') {
     lines.push(`pip install Django psycopg2-binary && django-admin startproject ${name} .`);
   } else if (be === 'fastapi') {
@@ -664,7 +672,9 @@ function buildPackageJsonSnippet(r: Resolved): string {
   lines.push(`  "version": "0.1.0",`);
   lines.push(`  "private": true,`);
   const runtime = RUNTIME_PKG[r.language?.id ?? 'typescript'] || RUNTIME_PKG.typescript;
-  lines.push(`  ${runtime},`);
+  // engines (not root-level keys)
+  lines.push(`  "engines": { ${runtime} },`);
+  lines.push(`  "dependencies": {`);
 
   // Framework deps
   if (r.frontend?.id === 'nextjs') {
@@ -691,22 +701,38 @@ function buildPackageJsonSnippet(r: Resolved): string {
   if (r.design.css?.id === 'tailwind') lines.push(`  "tailwindcss": "^3.4.0",`);
   lines.push(`  "zod": "^3.23.0",`);
   if (r.testing.unit?.id === 'vitest') lines.push(`  "vitest": "^2.1.0",`);
+  if (r.testing.unit?.id === 'jest' || r.frontend?.id === 'electron') {
+    lines.push(`  "jest": "^29.7.0",`);
+    lines.push(`  "@types/jest": "^29.5.0",`);
+    lines.push(`  "ts-jest": "^29.2.0",`);
+  }
   if (r.testing.e2e?.id === 'playwright') lines.push(`  "@playwright/test": "^1.47.0",`);
   if (r.thirdParty.payments?.id === 'stripe') lines.push(`  "stripe": "^17.0.0",`);
   if (r.thirdParty.email?.id === 'resend') lines.push(`  "resend": "^4.0.0",`);
   if (r.thirdParty.monitoring?.id === 'sentry') lines.push(`  "@sentry/node": "^8.0.0",`);
 
-  lines.push(`  "scripts": {`);
-  lines.push(`    "dev": "${r.scripts.dev}",`);
-  lines.push(`    "build": "${r.scripts.build}",`);
-  lines.push(`    "start": "${r.scripts.start}",`);
-  lines.push(`    "lint": "${r.scripts.lint}",`);
-  lines.push(`    "typecheck": "${r.scripts.typecheck}",`);
-  lines.push(`    "test": "${r.scripts.test}"`);
-  lines.push('  }');
-  lines.push('}');
+  lines.push(`  },`);
+  lines.push(`  "devDependencies": {`);
+  if (r.language?.id === 'typescript') {
+    lines.push(`    "typescript": "^5.6.0",`);
+    lines.push(`    "@types/node": "^22.0.0",`);
+  }
+  if (r.testing.unit?.id === 'vitest') lines.push(`    "vitest": "^2.1.0",`);
+  if (r.testing.unit?.id === 'jest' || r.frontend?.id === 'electron') {
+    lines.push(`    "jest": "^29.7.0",`);
+    lines.push(`    "@types/jest": "^29.5.0",`);
+    lines.push(`    "ts-jest": "^29.2.0",`);
+  }
+  if (r.testing.e2e?.id === 'playwright') lines.push(`    "@playwright/test": "^1.47.0",`);
+  if (r.thirdParty.monitoring?.id === 'sentry') lines.push(`    "@sentry/node": "^8.0.0",`);
+  lines.push(`    "eslint": "^9.0.0"`);
+  lines.push(`  }`);
+  lines.push(`}`);
   lines.push('EOF');
-  lines.push('pnpm install');
+  if (r.devops.pkg?.id === 'pnpm') lines.push(`pnpm install`);
+  else if (r.devops.pkg?.id === 'yarn') lines.push(`yarn install`);
+  else if (r.devops.pkg?.id === 'bun') lines.push(`bun install`);
+  else lines.push(`npm install`);
 
   return lines.join('\n');
 }
@@ -890,10 +916,23 @@ Coverage target: **${r.testing.coverage}%**. Enforced in CI.
 
 ## 9. CI/CD (${r.devops.ci?.name ?? 'GitHub Actions'})
 
-Workflow files go in \`.github/workflows/\`. Required jobs per PR:
+${(() => {
+  const ci = r.devops.ci?.id ?? 'github-actions';
+  if (ci === 'gitlab-ci') {
+    return 'Workflow file: **`.gitlab-ci.yml`** in the project root. Required jobs per MR/push:';
+  }
+  if (ci === 'circleci') {
+    return 'Workflow file: **`.circleci/config.yml`**. Required jobs per PR:';
+  }
+  if (ci === 'bitbucket-pipelines') {
+    return 'Workflow file: **`bitbucket-pipelines.yml`** in the project root. Required jobs per PR:';
+  }
+  return 'Workflow files go in **`.github/workflows/`**. Required jobs per PR:';
+})()}
 
 ${(() => {
   const langId = (r.language?.id ?? 'typescript') as string;
+  const isDesktop = r.frontend?.id === 'electron' || r.frontend?.id === 'tauri';
   if (langId === 'python') {
     return `1. \`lint\` — \`ruff check .\` then \`ruff format --check .\`
 2. \`typecheck\` — \`mypy --strict .\`
@@ -915,9 +954,16 @@ ${(() => {
 2. \`test\` — \`cargo test --all\`
 3. \`build\` — \`cargo build --release\`
 4. \`audit\` — \`cargo audit\`
-5. \`preview\` — deploy to ${r.hosting.backend?.name ?? 'preview environment'}`;
+5. \`release\` — deploy to ${r.hosting.backend?.name ?? 'preview environment'}`;
   }
   const pkg = r.devops.pkg?.id ?? 'pnpm';
+  if (isDesktop) {
+    return `1. \`typecheck\` — \`${pkg} ${r.scripts.typecheck}\`
+2. \`lint\` — \`${pkg} ${r.scripts.lint}\`
+3. \`test\` — \`${pkg} test\`
+4. \`build\` — \`${pkg} build\` (electron-builder packages .exe / .dmg / .AppImage)
+5. \`release\` — upload artifacts to GitLab Releases / GitHub Releases (no web preview — desktop app is distributed as installer)`;
+  }
   return `1. \`typecheck\` — \`${pkg} ${r.scripts.typecheck}\`
 2. \`lint\` — \`${pkg} ${r.scripts.lint}\`
 3. \`test\` — \`${pkg} test\`

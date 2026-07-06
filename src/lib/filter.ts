@@ -299,6 +299,7 @@ export function filterBackendHostings(
   all: CatalogEntry<BackendHostingId>[],
   backend: BackendId | '',
   language: LanguageId | '',
+  projectType: ProjectTypeId | '' = '',
 ): FilterResult<BackendHostingId> {
   const excluded: Record<string, string> = {};
   if (backend === '' || backend === 'none') {
@@ -308,6 +309,12 @@ export function filterBackendHostings(
       }
     }
   } else {
+    // Exclude web serverless for desktop and mobile APIs
+    if (projectType === 'desktop-app' || projectType === 'mobile-app') {
+      exclude(excluded, 'vercel-functions', 'Vercel is for web frontends');
+      exclude(excluded, 'netlify-functions', 'Netlify is for web frontends');
+      exclude(excluded, 'cloudflare-workers', 'Cloudflare Workers is for edge web computing');
+    }
     // Cloudflare Workers → only Hono
     if (backend !== 'hono') {
       for (const h of all) {
@@ -341,19 +348,35 @@ export function filterDatabaseHostings(
   primaryDb: DatabasePrimaryId | '',
 ): FilterResult<DatabaseHostingId> {
   const excluded: Record<string, string> = {};
+  
   if (primaryDb === 'sqlite' || primaryDb === 'none' || primaryDb === '') {
     for (const h of all) {
       if (h.id !== 'none') {
         exclude(excluded, h.id, 'SQLite is local — no DB hosting needed');
       }
     }
+  } else if (primaryDb === 'postgresql') {
+    exclude(excluded, 'planetscale', 'PlanetScale is MySQL only');
+    exclude(excluded, 'mongodb-atlas', 'Atlas is MongoDB only');
+  } else if (primaryDb === 'mysql' || primaryDb === 'mariadb') {
+    exclude(excluded, 'neon', 'Neon is PostgreSQL only');
+    exclude(excluded, 'supabase', 'Supabase is PostgreSQL only');
+    exclude(excluded, 'mongodb-atlas', 'Atlas is MongoDB only');
+  } else if (primaryDb === 'mongodb') {
+    exclude(excluded, 'neon', 'Neon is PostgreSQL only');
+    exclude(excluded, 'supabase', 'Supabase is PostgreSQL only');
+    exclude(excluded, 'planetscale', 'PlanetScale is MySQL only');
+    exclude(excluded, 'vercel-postgres', 'Vercel Postgres is PostgreSQL only');
   }
+
   const filtered = all.filter((e) => !excluded[e.id]);
   let def: DatabaseHostingId = 'none';
   if (primaryDb === 'postgresql' && !excluded['neon']) def = 'neon';
   else if (primaryDb === 'supabase-db') def = 'supabase';
   else if (primaryDb === 'mongodb') def = 'mongodb-atlas';
-  else if (primaryDb === 'mysql' || primaryDb === 'mariadb') def = 'planetscale';
+  else if ((primaryDb === 'mysql' || primaryDb === 'mariadb') && !excluded['planetscale']) def = 'planetscale';
+  else if (primaryDb && primaryDb !== 'sqlite' && primaryDb !== 'none') def = 'aws-rds';
+
   return { catalog: filtered, pinnedDefault: def, excluded };
 }
 
@@ -653,3 +676,5 @@ export function filterDesignOptions<T extends string>(
   }
   return { catalog: all.filter((e) => !excluded[e.id]), pinnedDefault: 'none' as T, excluded };
 }
+
+

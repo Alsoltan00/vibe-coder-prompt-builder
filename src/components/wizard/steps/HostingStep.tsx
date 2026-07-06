@@ -50,7 +50,7 @@ export function HostingStep() {
     const f = filterFrontendHostings(frontendHostingCatalog as any, wizard.data.stack.frontend);
     excluded = f.excluded;
   } else if (tab === 'backend') {
-    const f = filterBackendHostings(backendHostingCatalog as any, wizard.data.stack.backend, wizard.data.language);
+    const f = filterBackendHostings(backendHostingCatalog as any, wizard.data.stack.backend, wizard.data.language, wizard.data.identity.projectType);
     excluded = f.excluded;
   } else if (tab === 'database') {
     const f = filterDatabaseHostings(databaseHostingCatalog as any, wizard.data.stack.database.primary);
@@ -95,3 +95,4 @@ export function HostingStep() {
     </div>
   );
 }
+

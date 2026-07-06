@@ -261,6 +261,14 @@ const RULES: Rule[] = [
     message: () => 'Jetpack Compose requires Kotlin.',
   },
   {
+    id: 'no-web-serverless-for-desktop-mobile',
+    appliesTo: (d) =>
+      ['desktop-app', 'mobile-app'].includes(d.identity.projectType) &&
+      ['vercel-functions', 'netlify-functions', 'cloudflare-workers'].includes(d.stack.hosting.backend),
+    check: () => ({ field: 'stack.hosting.backend', fix: 'railway' }),
+    message: () => 'Vercel/Netlify functions are for web frontends. Use container hosting (Railway, Render, AWS) for Mobile/Desktop APIs.',
+  },
+  {
     id: 'flutter-needs-dart',
     appliesTo: (d) => d.stack.frontend === 'flutter',
     check: (d) =>
@@ -385,11 +393,43 @@ const RULES: Rule[] = [
     appliesTo: (d) =>
       d.stack.database.primary !== 'none' &&
       d.stack.database.primary !== 'sqlite',
-    check: (d) => d.stack.hosting.database === 'none'
-      ? { field: 'stack.hosting.database', fix: 'neon' }
-      : null,
-    message: () => 'Database must be hosted.',
-  },
+      check: (d) => {
+        if (d.stack.hosting.database === 'none') {
+          let f = 'aws-rds';
+          if (d.stack.database.primary === 'postgresql') f = 'neon';
+          if (d.stack.database.primary === 'supabase-db') f = 'supabase';
+          if (d.stack.database.primary === 'mongodb') f = 'mongodb-atlas';
+          if (d.stack.database.primary === 'mysql' || d.stack.database.primary === 'mariadb') f = 'planetscale';
+          return { field: 'stack.hosting.database', fix: f };
+        }
+        return null;
+      },
+      message: () => 'Database must be hosted.',
+    },
+    {
+      id: 'neon-needs-postgres',
+      appliesTo: (d) => d.stack.hosting.database === 'neon',
+      check: (d) => d.stack.database.primary !== 'postgresql'
+        ? { field: 'stack.database.primary', fix: 'postgresql' }
+        : null,
+      message: () => 'Neon requires PostgreSQL.',
+    },
+    {
+      id: 'planetscale-needs-mysql',
+      appliesTo: (d) => d.stack.hosting.database === 'planetscale',
+      check: (d) => d.stack.database.primary !== 'mysql' && d.stack.database.primary !== 'mariadb'
+        ? { field: 'stack.database.primary', fix: 'mysql' }
+        : null,
+      message: () => 'PlanetScale requires MySQL or MariaDB.',
+    },
+    {
+      id: 'atlas-needs-mongo',
+      appliesTo: (d) => d.stack.hosting.database === 'mongodb-atlas',
+      check: (d) => d.stack.database.primary !== 'mongodb'
+        ? { field: 'stack.database.primary', fix: 'mongodb' }
+        : null,
+      message: () => 'MongoDB Atlas requires MongoDB.',
+    },
   {
     id: 'sqlite-no-hosting',
     appliesTo: (d) => d.stack.database.primary === 'sqlite',
